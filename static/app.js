@@ -231,8 +231,6 @@ function renderDashboard() {
       <div><div class="num">${num}</div><div class="lbl">${lbl}</div></div></div>`;
 
   const recent = [...d.entries].sort((a, b) => b.start.localeCompare(a.start) || b.id - a.id).slice(0, 8);
-  const members = [...d.members].sort((a, b) => (b.used + b.planned) - (a.used + a.planned));
-  const maxUse = Math.max(1, ...members.map(m => m.total || (m.used + m.planned)));
 
   $("#page-dashboard").innerHTML = `
     <div class="card">
@@ -259,6 +257,8 @@ function renderDashboard() {
       </div>`}
     </div>
 
+    <div class="card mt">${leaveCalendar(true)}</div>
+
     <div class="card mt">
       <div class="card-h"><h2>최근 휴가 신청</h2><a class="right link" href="#leave">휴가관리 →</a></div>
       <div class="table-wrap"><table>
@@ -272,28 +272,10 @@ function renderDashboard() {
           <td class="muted small">${esc(e.category === "연차" || e.category.endsWith("반차") ? e.note : e.label)}</td>
         </tr>`).join("")}</tbody>
       </table></div>
-    </div>
-
-    <div class="card mt">
-        <div class="card-h"><h2>팀원 연차 현황</h2><span class="sub">2026년 · 엑셀 기준</span>
-          <div class="right legend"><span style="--c:var(--pri)">사용</span><span style="--c:#a9bffb">예정</span></div>
-        </div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>이름</th><th style="width:40%">사용률</th><th class="num">사용</th><th class="num">예정</th><th class="num">잔여</th></tr></thead>
-          <tbody>${members.map(m => {
-            const base = m.total || maxUse;
-            return `<tr>
-              <td><b>${esc(m.name)}</b> <span class="muted small">${esc(m.position || "")}</span></td>
-              <td><div class="bar"><i class="u" style="width:${(m.used / base) * 100}%"></i><i class="p" style="width:${(m.planned / base) * 100}%"></i></div></td>
-              <td class="num">${fmtDays(m.used)}</td>
-              <td class="num">${m.planned ? fmtDays(m.planned) : "-"}</td>
-              <td class="num">${m.remaining == null ? `<span class="muted small">미설정</span>` : fmtDays(m.remaining)}</td>
-            </tr>`;
-          }).join("")}</tbody>
-        </table></div>
     </div>`;
 
   const page = $("#page-dashboard");
+  bindCalendar(page, renderDashboard);
   page.querySelectorAll("[data-act]").forEach(b => b.onclick = () => {
     const a = b.dataset.act;
     if (a === "today") state.dashDate = d.today;
@@ -650,7 +632,8 @@ function leaveStatus() {
     <p class="small muted" style="margin:12px 0 0">※ 연차 1일, 반차 0.5일, 시간단위휴가는 ${state.data.hours_per_day}시간=1일로 환산하며 주말·공휴일은 제외합니다. 공가·대외활동은 차감하지 않습니다.</p></div>`;
 }
 
-function leaveCalendar() {
+// inCard: 대시보드처럼 이미 카드 안에 넣을 때 바깥 카드를 생략한다.
+function leaveCalendar(inCard = false) {
   const d = state.data;
   const [y, m] = state.calMonth.split("-").map(Number);
   const first = new Date(y, m - 1, 1);
@@ -667,8 +650,10 @@ function leaveCalendar() {
       ${evs.map(e => `<div class="ev t-${esc(e.category)}" title="${esc(e.name + " · " + e.label)}">${esc(e.name)} ${esc(e.category === "시간단위" ? "시간" : e.category === "연차" ? "" : e.category)}</div>`).join("")}
     </div>`;
   }
+  const grid = `<div class="cal">${DOW.map(x => `<div class="dow">${x}</div>`).join("")}${cells}</div>`;
   return `
     <div class="toolbar">
+      ${inCard ? `<h2 style="font-size:16px;margin:0 8px 0 0">휴가 달력</h2>` : ""}
       <button class="btn-sec" data-cal="-1">◀</button>
       <b style="font-size:16px;min-width:110px;text-align:center">${y}년 ${m}월</b>
       <button class="btn-sec" data-cal="1">▶</button>
@@ -677,14 +662,10 @@ function leaveCalendar() {
         ${["연차", "오전반차", "오후반차", "시간단위", "공가"].map(c => `<span class="t-${c}" style="--c:currentColor;background:none">${c}</span>`).join("")}
       </div>
     </div>
-    <div class="card" style="padding:0"><div class="cal">${DOW.map(x => `<div class="dow">${x}</div>`).join("")}${cells}</div></div>`;
+    ${inCard ? grid : `<div class="card" style="padding:0">${grid}</div>`}`;
 }
 
-function bindLeave(el) {
-  const f = state.leaveFilter;
-  const on = (id, key) => { const x = $("#" + id); if (x) x.onchange = () => { f[key] = x.value; renderLeave(); }; };
-  on("fName", "name"); on("fCat", "category"); on("fMonth", "month");
-  el.querySelectorAll("[data-period]").forEach(b => b.onclick = () => { f.period = b.dataset.period; renderLeave(); });
+function bindCalendar(el, rerender) {
   el.querySelectorAll("[data-cal]").forEach(b => b.onclick = () => {
     const n = Number(b.dataset.cal);
     if (!n) state.calMonth = state.data.today.slice(0, 7);
@@ -692,8 +673,16 @@ function bindLeave(el) {
       const [y, m] = state.calMonth.split("-").map(Number);
       state.calMonth = iso(new Date(y, m - 1 + n, 1)).slice(0, 7);
     }
-    renderLeave();
+    rerender();
   });
+}
+
+function bindLeave(el) {
+  const f = state.leaveFilter;
+  const on = (id, key) => { const x = $("#" + id); if (x) x.onchange = () => { f[key] = x.value; renderLeave(); }; };
+  on("fName", "name"); on("fCat", "category"); on("fMonth", "month");
+  el.querySelectorAll("[data-period]").forEach(b => b.onclick = () => { f.period = b.dataset.period; renderLeave(); });
+  bindCalendar(el, renderLeave);
 }
 
 /* ------------------------------------------------------------ routing */
