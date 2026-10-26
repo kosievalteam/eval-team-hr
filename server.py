@@ -56,6 +56,13 @@ def to_date(v):
         return v.date()
     if isinstance(v, date):
         return v
+    # 셀 서식이 깨지면 날짜가 엑셀 일련번호(예: 46325 = 2026-10-30)로 읽힌다
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and 30000 < v < 80000:
+        return (datetime(1899, 12, 30) + timedelta(days=int(v))).date()
+    if isinstance(v, str):
+        m = re.fullmatch(r"\s*(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})\.?\s*", v)
+        if m:
+            return date(*map(int, m.groups()))
     return None
 
 
