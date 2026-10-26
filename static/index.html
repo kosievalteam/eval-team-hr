@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>정책평가팀 HR</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">평</div>
+      <div>
+        <div class="brand-title" id="teamName">정책평가팀</div>
+        <div class="brand-sub">HR 관리</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="nav-group">메인</div>
+      <a href="#dashboard" data-page="dashboard"><span class="ico">▦</span>대시보드</a>
+      <a href="#notices" data-page="notices"><span class="ico">✎</span>공지사항<span class="badge" id="navNotice"></span></a>
+      <div class="nav-group">업무</div>
+      <a href="#tasks" data-page="tasks"><span class="ico">☰</span>업무관리</a>
+      <div class="nav-group">인사</div>
+      <a href="#leave" data-page="leave"><span class="ico">✈</span>휴가관리<span class="badge" id="navLeave"></span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="btn-ghost" id="btnReload" title="엑셀 파일을 다시 읽습니다">⟳ 엑셀 새로고침</button>
+      <div class="sync" id="syncInfo">-</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="menu-btn" id="menuBtn" aria-label="메뉴">☰</button>
+      <h1 id="pageTitle">대시보드</h1>
+      <div class="topbar-right" id="todayLabel"></div>
+    </header>
+    <div id="errorBox" class="error-box" hidden></div>
+    <section class="page" id="page-dashboard"></section>
+    <section class="page" id="page-notices" hidden></section>
+    <section class="page" id="page-tasks" hidden></section>
+    <section class="page" id="page-leave" hidden></section>
+  </main>
+</div>
+
+<dialog id="noticeDialog">
+  <form method="dialog" id="noticeForm" class="dlg">
+    <h3 id="noticeDlgTitle">공지 작성</h3>
+    <input type="hidden" name="id">
+    <label>제목<input name="title" required maxlength="120"></label>
+    <label>내용<textarea name="body" rows="7"></textarea></label>
+    <div class="row2">
+      <label>작성자<input name="author" maxlength="20"></label>
+      <label>게시일<input name="date" type="date"></label>
+    </div>
+    <label class="chk"><input type="checkbox" name="important"> 중요 공지</label>
+    <div class="dlg-actions">
+      <button value="cancel" class="btn-sec" formnovalidate>취소</button>
+      <button value="save" class="btn-pri">저장</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

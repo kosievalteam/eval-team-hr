@@ -1,0 +1,18 @@
+{
+  "team_name": "정책평가팀",
+  "port": 8765,
+  "leave_file": "C:\\Users\\user\\OneDrive\\업무자료\\팀서무\\[평가팀] 2026년 연차 일정.xlsx",
+  "leave_sheet": "연차입력",
+  "weekly_file": "C:\\Users\\user\\OneDrive\\업무자료\\팀서무\\[평가팀] 2026년 주간업무계획.xlsx",
+  "personal_file": "C:\\Users\\user\\OneDrive\\업무자료\\팀서무\\[내부용]정책평가팀 주간업무보고.xlsx",
+  "hours_per_day": 8,
+  "_members_help": "total = 2026년 부여 연차일수(모르면 null), prior_used = 엑셀에 기록되기 전에 이미 사용한 일수",
+  "members": [
+    {
+      "name": "홍길동",
+      "position": "연구원",
+      "total": 15,
+      "prior_used": 0
+    }
+  ]
+}

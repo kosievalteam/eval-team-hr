@@ -1,0 +1,6 @@
+# 개인정보·비밀 — 절대 커밋하지 않음
+.secret/
+data/
+config.json
+__pycache__/
+*.tmp
