@@ -6,6 +6,7 @@
         python publish.py --no-push (docs/ 생성만)
 """
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -44,11 +45,16 @@ def build_docs(password):
     payload.pop("sources", None)  # 로컬 경로는 웹에 필요 없음
 
     DOCS.mkdir(exist_ok=True)
+    version = {}
     for name in ("app.js", "app.css"):
         shutil.copy2(server.STATIC / name, DOCS / name)
+        version[name] = hashlib.sha256((DOCS / name).read_bytes()).hexdigest()[:10]
     html = (server.STATIC / "index.html").read_text(encoding="utf-8")
     html = html.replace("<head>", '<head>\n<meta name="robots" content="noindex, nofollow">', 1)
-    html = html.replace('<script src="app.js"></script>', '<script>window.HR_STATIC = true;</script>\n<script src="app.js"></script>', 1)
+    # 파일 내용이 바뀌면 주소도 바뀌게 해 GitHub Pages 캐시(10분)에 옛 화면이 남지 않도록 한다
+    html = html.replace('href="app.css"', f'href="app.css?v={version["app.css"]}"', 1)
+    html = html.replace('<script src="app.js"></script>',
+                        f'<script>window.HR_STATIC = true;</script>\n<script src="app.js?v={version["app.js"]}"></script>', 1)
     (DOCS / "index.html").write_text(html, encoding="utf-8")
     (DOCS / ".nojekyll").write_text("", encoding="utf-8")
     (DOCS / "data.enc").write_text(json.dumps(encrypt(payload, password)), encoding="utf-8")
