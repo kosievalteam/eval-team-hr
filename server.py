@@ -426,11 +426,21 @@ class Handler(SimpleHTTPRequestHandler):
         return self.send_json({"ok": True})
 
 
+class Server(ThreadingHTTPServer):
+    # Windows에서 SO_REUSEADDR를 켜면 같은 포트에 서버가 여러 개 떠서 옛 버전이 응답할 수 있다
+    allow_reuse_address = False
+
+
 def main():
     cfg = load_config()
     port = cfg.get("port", 8765)
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{port}/"
+    try:
+        server = Server(("127.0.0.1", port), Handler)
+    except OSError:
+        print(f"이미 HR관리앱이 실행 중입니다: {url}\n새 버전으로 다시 띄우려면 기존 HR앱 창을 닫고 다시 실행하세요.")
+        webbrowser.open(url)
+        return
     print(f"{cfg.get('team_name', '')} HR관리앱 실행 중: {url}  (종료: Ctrl+C)")
     threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
