@@ -1,13 +1,13 @@
 """정책평가팀 HR관리앱 로컬 서버.
 
-엑셀(연차 일정, 주간업무계획)을 요청 시마다 읽어 JSON으로 제공하고 static/ 화면을 서빙한다.
-파일 수정시각이 바뀌지 않으면 캐시를 재사용한다.
+엑셀(연차 일정, 주간업무계획, 사전협의 접수·검토 현황)을 요청 시마다 읽어 JSON으로 제공하고 static/ 화면을 서빙한다.
+파일 수정시각이 바뀌지 않으면 캐시를 재사용한다. 공지·웹 입력은 화면에서 Supabase로 직접 읽고 쓴다.
 """
+import glob
 import json
 import re
 import threading
 import unicodedata
-import uuid
 import webbrowser
 from datetime import date, datetime, timedelta
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -18,7 +18,6 @@ import openpyxl
 
 BASE = Path(__file__).resolve().parent
 STATIC = BASE / "static"
-NOTICES = BASE / "data" / "notices.json"
 _lock = threading.Lock()
 _cache = {}
 
@@ -287,21 +286,69 @@ def parse_personal(path):
     return weeks
 
 
-# ---------------------------------------------------------------- 공지사항
+# ---------------------------------------------------------------- 사전협의 접수·검토 현황
 
-def read_notices():
-    if not NOTICES.exists():
-        return []
-    with open(NOTICES, encoding="utf-8") as f:
-        return json.load(f)
+REVIEW_FIELDS = {
+    "no": "협의번호", "kind": "구분", "agency": "신청기관명", "type": "신청유형", "field": "신청분야",
+    "biz1": "세부사업명", "biz2": "내역사업명", "biz3": "내내역사업명", "state": "진행상태",
+    "assignee": "검토담당자", "received": "접수완료", "reviewed": "검토완료", "result": "결과서",
+    "memo": "메모", "draft": "초안작성", "draft_review": "초안검토", "sent": "중기청송부",
+}
+REVIEW_DATES = {"received", "reviewed", "draft", "draft_review", "sent"}
+MD_RE = re.compile(r"\s*(\d{1,2})\s*(?:월\s*|[-./]\s*)(\d{1,2})\s*일?")
 
 
-def write_notices(items):
-    NOTICES.parent.mkdir(exist_ok=True)
-    tmp = NOTICES.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(items, f, ensure_ascii=False, indent=2)
-    tmp.replace(NOTICES)
+def review_date(v, year):
+    """'9월 8일', '05-06', 날짜 셀을 ISO로 바꾼다. 해석할 수 없으면 원문을 그대로 둔다."""
+    if v in (None, "", "-"):
+        return ""
+    d = to_date(v)
+    if d:
+        return d.isoformat()
+    text = norm(v).strip()
+    m = MD_RE.match(text)
+    if m:
+        try:
+            return date(year, int(m.group(1)), int(m.group(2))).isoformat()
+        except ValueError:
+            pass
+    return text
+
+
+def latest_file(pattern):
+    """'..._*.xlsx'처럼 날짜가 붙는 파일은 이름순으로 가장 최근 파일을 쓴다."""
+    if not any(c in pattern for c in "*?["):
+        return pattern
+    files = [f for f in glob.glob(pattern) if not Path(f).name.startswith("~$")]
+    return max(files, key=lambda f: Path(f).name) if files else pattern
+
+
+def parse_reviews(path):
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb.worksheets[0]
+    cols, rows = None, []
+    for r in ws.iter_rows(values_only=True):
+        if cols is None:
+            names = [norm(c).strip() for c in r]
+            if "협의번호" in names:
+                cols = {k: names.index(h) for k, h in REVIEW_FIELDS.items() if h in names}
+            continue
+        r = list(r) + [None] * len(REVIEW_FIELDS)
+        no = norm(r[cols["no"]]).strip()
+        if not no:
+            continue
+        year = int(no[:4]) if no[:4].isdigit() else date.today().year
+        row = {}
+        for k, i in cols.items():
+            v = r[i]
+            row[k] = review_date(v, year) if k in REVIEW_DATES else ("" if v in (None, "-") else clean_text(v))
+        row["no"] = no
+        rows.append(row)
+    wb.close()
+    if cols is None:
+        raise ValueError("'협의번호' 헤더를 찾지 못했습니다.")
+    rows.sort(key=lambda x: x["no"], reverse=True)
+    return {"file": Path(path).name, "rows": rows}
 
 
 # ---------------------------------------------------------------- 집계
@@ -321,11 +368,16 @@ def build_payload():
         personal, err = cached(cfg["personal_file"], parse_personal)
         if err:
             errors.append(err)
+    reviews = None
+    if cfg.get("review_file"):
+        reviews, err = cached(latest_file(cfg["review_file"]), parse_reviews)
+        if err:
+            errors.append(err)
     leave = leave or {"holidays": {}, "entries": []}
 
     today = date.today().isoformat()
     # 팀원은 config.json 명단 기준. 명단에 없는 이름(전출자 등)의 휴가·업무는 화면에서 제외한다.
-    members = {m["name"]: dict(m) for m in cfg.get("members", [])}
+    members = {m["name"]: {k: v for k, v in m.items() if k not in ("email", "admin")} for m in cfg.get("members", [])}
     entries = [e for e in leave["entries"] if e["name"] in members]
     personal = [dict(w, tasks=[t for t in w["tasks"] if t["owner"] in members]) for w in (personal or [])]
     for m in members.values():
@@ -354,8 +406,9 @@ def build_payload():
         "entries": entries,
         "weeks": weekly or [],
         "personal": personal,
-        "notices": read_notices(),
-        "sources": {"leave": cfg["leave_file"], "weekly": cfg["weekly_file"], "personal": cfg.get("personal_file", "")},
+        "reviews": reviews or {"file": "", "rows": []},
+        "sources": {"leave": cfg["leave_file"], "weekly": cfg["weekly_file"], "personal": cfg.get("personal_file", ""),
+                    "reviews": cfg.get("review_file", "")},
         "errors": errors,
     }
 
@@ -384,46 +437,12 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def read_json(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        return json.loads(self.rfile.read(n) or b"{}")
-
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/data":
             with _lock:
                 return self.send_json(build_payload())
         return super().do_GET()
-
-    def do_POST(self):
-        if urlparse(self.path).path != "/api/notices":
-            return self.send_json({"error": "not found"}, 404)
-        body = self.read_json()
-        title = (body.get("title") or "").strip()
-        if not title:
-            return self.send_json({"error": "제목을 입력하세요."}, 400)
-        with _lock:
-            items = read_notices()
-            item = {
-                "id": body.get("id") or uuid.uuid4().hex[:10],
-                "title": title,
-                "body": (body.get("body") or "").strip(),
-                "author": (body.get("author") or "").strip(),
-                "important": bool(body.get("important")),
-                "date": body.get("date") or date.today().isoformat(),
-            }
-            items = [x for x in items if x["id"] != item["id"]] + [item]
-            write_notices(items)
-        return self.send_json(item)
-
-    def do_DELETE(self):
-        path = urlparse(self.path).path
-        if not path.startswith("/api/notices/"):
-            return self.send_json({"error": "not found"}, 404)
-        nid = path.rsplit("/", 1)[-1]
-        with _lock:
-            write_notices([x for x in read_notices() if x["id"] != nid])
-        return self.send_json({"ok": True})
 
 
 class Server(ThreadingHTTPServer):

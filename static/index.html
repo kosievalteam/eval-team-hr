@@ -28,6 +28,7 @@
       <a href="#leave" data-page="leave"><span class="ico">✈</span>휴가관리<span class="badge" id="navLeave"></span></a>
     </nav>
     <div class="sidebar-foot">
+      <div class="user-box" id="userBox"></div>
       <button class="btn-ghost" id="btnReload" title="엑셀 파일을 다시 읽습니다">⟳ 엑셀 새로고침</button>
       <div class="sync" id="syncInfo">-</div>
     </div>
@@ -48,24 +49,9 @@
   </main>
 </div>
 
-<dialog id="noticeDialog">
-  <form method="dialog" id="noticeForm" class="dlg">
-    <h3 id="noticeDlgTitle">공지 작성</h3>
-    <input type="hidden" name="id">
-    <label>제목<input name="title" required maxlength="120"></label>
-    <label>내용<textarea name="body" rows="7"></textarea></label>
-    <div class="row2">
-      <label>작성자<input name="author" maxlength="20"></label>
-      <label>게시일<input name="date" type="date"></label>
-    </div>
-    <label class="chk"><input type="checkbox" name="important"> 중요 공지</label>
-    <div class="dlg-actions">
-      <button value="cancel" class="btn-sec" formnovalidate>취소</button>
-      <button value="save" class="btn-pri">저장</button>
-    </div>
-  </form>
-</dialog>
+<dialog id="formDialog"></dialog>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

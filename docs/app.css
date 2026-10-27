@@ -237,13 +237,13 @@ mark { background: #ffe58a; border-radius: 2px; padding: 0 1px; }
 .cal .day .hn { font-size: 11px; color: var(--red); }
 .cal .ev { font-size: 11px; border-radius: 4px; padding: 1px 5px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* password gate (웹 배포판) */
+/* 로그인 화면 */
 #pwGate { position: fixed; inset: 0; z-index: 50; background: var(--side); display: grid; place-items: center; padding: 16px; }
 #pwGate[hidden] { display: none; }
 .gate-box { background: #fff; border-radius: 16px; padding: 28px; width: min(360px, 100%); display: flex; flex-direction: column; gap: 10px; text-align: center; }
 .gate-box h2 { margin: 0; font-size: 18px; }
 .gate-box p { margin: 0 0 4px; }
-.gate-box input[type=password] { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 15px; }
+.gate-box input { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 15px; }
 .gate-box .chk { display: flex; gap: 6px; align-items: center; justify-content: center; color: var(--muted); }
 .gate-msg { color: var(--red); font-size: 13px; min-height: 18px; }
 
@@ -255,12 +255,29 @@ dialog::backdrop { background: rgba(20, 26, 38, .45); }
 .dlg label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .dlg input:not([type=checkbox]), .dlg textarea { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--text); }
 .dlg .chk { flex-direction: row; align-items: center; gap: 6px; }
+.dlg select { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--text); background: #fff; }
+.form-msg { color: var(--red); font-size: 13px; min-height: 0; }
+.form-msg:empty { display: none; }
+.btn-sec.danger { color: var(--red); }
+.link-btn { border: 0; background: none; padding: 0; color: inherit; cursor: pointer; text-decoration: underline; font: inherit; }
+.gate-box .link-btn { color: var(--muted); font-size: 13px; }
+.user-box { font-size: 12px; color: var(--side-text); margin-bottom: 10px; text-align: center; }
+.user-box .who { color: #fff; font-size: 13px; margin-bottom: 2px; }
+.pill.web { background: #e8f1ff; color: #2f6fd6; font-size: 11px; padding: 1px 7px; margin-left: 4px; vertical-align: 1px; }
+.task-head .btn-sm { margin-left: 8px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
 
 /* 협의검토관리 */
+.rvtable { min-width: 1080px; }
+.rvtable td { vertical-align: top; }
+.rvtable .ov, .ov-key { color: #2f6fd6; font-weight: 600; }
+.rv-접수완료, .rv-검토진행, .rv-재협의진행 { background: #e8f1ff; color: #2f6fd6; }
+.rv-협의완료, .rv-재협의완료 { background: #e6f6ee; color: #1f8a55; }
+.rv-접수대기 { background: #fff4e0; color: #b26a00; }
+.rv-접수반려 { background: var(--gray-soft); color: var(--muted); }
 .embed-card { padding-bottom: 12px; }
 .embed-card .btn-sec { text-decoration: none; font-size: 13px; }
 .embed { display: block; width: 100%; height: calc(100vh - 170px); min-height: 520px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }

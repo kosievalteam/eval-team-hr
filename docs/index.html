@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>정책평가팀 HR</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="app.css?v=2dcc53e1cc">
+<link rel="stylesheet" href="app.css?v=f339c068ca">
 </head>
 <body>
 <div class="layout">
@@ -29,6 +29,7 @@
       <a href="#leave" data-page="leave"><span class="ico">✈</span>휴가관리<span class="badge" id="navLeave"></span></a>
     </nav>
     <div class="sidebar-foot">
+      <div class="user-box" id="userBox"></div>
       <button class="btn-ghost" id="btnReload" title="엑셀 파일을 다시 읽습니다">⟳ 엑셀 새로고침</button>
       <div class="sync" id="syncInfo">-</div>
     </div>
@@ -49,25 +50,10 @@
   </main>
 </div>
 
-<dialog id="noticeDialog">
-  <form method="dialog" id="noticeForm" class="dlg">
-    <h3 id="noticeDlgTitle">공지 작성</h3>
-    <input type="hidden" name="id">
-    <label>제목<input name="title" required maxlength="120"></label>
-    <label>내용<textarea name="body" rows="7"></textarea></label>
-    <div class="row2">
-      <label>작성자<input name="author" maxlength="20"></label>
-      <label>게시일<input name="date" type="date"></label>
-    </div>
-    <label class="chk"><input type="checkbox" name="important"> 중요 공지</label>
-    <div class="dlg-actions">
-      <button value="cancel" class="btn-sec" formnovalidate>취소</button>
-      <button value="save" class="btn-pri">저장</button>
-    </div>
-  </form>
-</dialog>
+<dialog id="formDialog"></dialog>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>window.HR_STATIC = true;</script>
-<script src="app.js?v=64d4188745"></script>
+<script src="app.js?v=f37e478205"></script>
 </body>
 </html>
