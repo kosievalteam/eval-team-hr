@@ -16,7 +16,8 @@ const state = {
   pStatus: "",
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "업무관리", leave: "휴가관리" };
+const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "주간업무관리", reviews: "협의검토관리", leave: "휴가관리" };
+const REVIEW_DASHBOARD = "https://kosievalteam.github.io/newbiz_dashboard/";
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const $ = (s, el = document) => el.querySelector(s);
@@ -207,7 +208,7 @@ function render() {
   document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("active", a.dataset.page === state.page));
   Object.keys(PAGES).forEach(p => ($("#page-" + p).hidden = p !== state.page));
   $("#pageTitle").textContent = PAGES[state.page];
-  ({ dashboard: renderDashboard, notices: renderNotices, tasks: renderTasks, leave: renderLeave })[state.page]();
+  ({ dashboard: renderDashboard, notices: renderNotices, tasks: renderTasks, reviews: renderReviews, leave: renderLeave })[state.page]();
 }
 
 /* ------------------------------------------------------------ dashboard */
@@ -683,6 +684,21 @@ function bindLeave(el) {
   on("fName", "name"); on("fCat", "category"); on("fMonth", "month");
   el.querySelectorAll("[data-period]").forEach(b => b.onclick = () => { f.period = b.dataset.period; renderLeave(); });
   bindCalendar(el, renderLeave);
+}
+
+/* ------------------------------------------------------------ 협의검토관리 */
+function renderReviews() {
+  const el = $("#page-reviews");
+  if (el.firstChild) return;  // 엑셀 새로고침 때마다 iframe을 다시 불러오지 않도록 한 번만 그린다
+  el.innerHTML = `
+    <div class="card embed-card">
+      <div class="card-h">
+        <h2>사전협의 검토현황</h2>
+        <span class="sub">newbiz_dashboard</span>
+        <a class="right btn-sec" href="${REVIEW_DASHBOARD}" target="_blank" rel="noopener">새 창에서 열기 ↗</a>
+      </div>
+      <iframe class="embed" src="${REVIEW_DASHBOARD}" title="사전협의 검토현황 대시보드" loading="lazy"></iframe>
+    </div>`;
 }
 
 /* ------------------------------------------------------------ routing */
