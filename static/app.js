@@ -16,7 +16,7 @@ const state = {
   pStatus: "",
   user: null,
   rvTab: "list",
-  rvFilter: { state: "_active", who: "", stage: "", q: "" },
+  rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["age", -1] },
 };
 
 const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "주간업무관리", reviews: "협의검토관리", leave: "휴가관리" };
@@ -953,8 +953,15 @@ function openLeave(e) {
 }
 
 /* ------------------------------------------------------------ 협의검토관리 */
-const REVIEW_EDIT = ["assignee", "draft", "draft_review", "sent", "memo"];
-const REVIEW_ACTIVE = ["접수완료", "검토진행", "재협의진행"];
+// 진행현황 = newbiz_dashboard의 '협의건 일정표'와 같은 열·기준. 검토자·초안 작성·검토본·메모는 웹에서 덮어쓸 수 있다.
+const REVIEW_EDIT = ["assignee", "draft", "draft_review", "memo"];
+const REVIEW_OPEN = ["접수완료", "검토진행", "재협의대기", "재협의진행"];  // 접수완료 후 아직 끝나지 않은 단계
+const RV_COLS = [
+  ["no", "협의번호"], ["assignee", "검토자"], ["kind", "구분"], ["agency", "기관"], ["field", "분야"], ["name", "사업명"],
+  ["state", "진행상태"], ["age", "경과일"], ["received", "접수"], ["accepted", "접수완료"], ["wait_days", "접수 처리기간"],
+  ["draft", "초안 작성"], ["draft_review", "검토본"], ["reviewed", "검토완료"], ["result", "결과서 수령"], ["memo", "메모"],
+];
+const RV_NUM = new Set(["age", "wait_days"]);
 
 function renderReviews() {
   const el = $("#page-reviews");
@@ -977,68 +984,93 @@ function renderReviews() {
   if (state.rvTab !== "dash") renderReviewList();
 }
 
-function rvDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s) ? fmtDate(s, false) : esc(s); }
-function rvStage(r) {
-  if (r.sent) return "송부";
-  if (r.draft_review) return "초안검토";
-  if (r.draft) return "초안작성";
-  return "";
+// 경과일: 접수완료일부터 오늘까지(진행 중인 건만). 대시보드와 같이 30일 이상 주황, 60일 이상 빨강.
+function rvAge(r) {
+  return REVIEW_OPEN.includes(r.state) && r.accepted ? Math.round((parseIso(state.data.today) - parseIso(r.accepted)) / 864e5) : "";
+}
+function rvShortDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s.slice(2, 4)}.${s.slice(5, 7)}.${s.slice(8)}` : esc(s); }
+function rvPill(s) {
+  const cls = /원안동의|재협의완료/.test(s) ? "ok" : /권고/.test(s) ? "rec" : /반려/.test(s) ? "bad" : /대기/.test(s) ? "wait" : "warn";
+  return `<span class="rvp ${cls}">${esc(s || "-")}</span>`;
 }
 
 function renderReviewList() {
-  const { file, rows } = state.data.reviews;
+  const { file, collected, rows } = state.data.reviews;
   const f = state.rvFilter;
   const el = $("#rvBody");
   if (!rows.length) {
-    el.innerHTML = `<div class="card empty">사전협의 접수·검토 현황 엑셀(config.json의 review_file)을 찾지 못했습니다.</div>`;
+    el.innerHTML = `<div class="card empty">협의건 일정표(config.json의 review_file: dash_cases_2026.csv)를 찾지 못했습니다.</div>`;
     return;
   }
+  rows.forEach(r => (r.age = rvAge(r)));
   const q = f.q.trim().toLowerCase();
-  const states = [...new Set(rows.map(r => r.state).filter(Boolean))];
+  // 구분·분야·검토자 거르개를 먼저 적용하고, 진행상태 칩의 건수는 그 결과로 센다(대시보드와 같은 기준)
+  const base = rows.filter(r =>
+    (!f.kind || r.kind === f.kind) && (!f.field || r.field === f.field) &&
+    (!f.who || (f.who === "_none" ? !r.assignee : r.assignee === f.who)) &&
+    (!q || [r.no, r.agency, r.name, r.memo].join("\n").toLowerCase().includes(q)));
+  const stages = [...new Set(rows.map(r => r.state).filter(Boolean))].sort();
+  const list = base.filter(r => !f.stage || (f.stage === "_open" ? REVIEW_OPEN.includes(r.state) : r.state === f.stage));
+  const [sk, dir] = f.sort;
+  list.sort((a, b) => {
+    const x = a[sk], y = b[sk];
+    const c = RV_NUM.has(sk) ? (x === "" ? -1e9 : +x) - (y === "" ? -1e9 : +y) : String(x).localeCompare(String(y), "ko");
+    return c * dir || b.no.localeCompare(a.no);
+  });
+  const open = base.filter(r => REVIEW_OPEN.includes(r.state));
+  const opts = (vals, cur) => vals.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("");
+  const chip = (key, v, l) => `<button data-${key}="${esc(v)}" class="${f[key === "rk" ? "kind" : "stage"] === v ? "on" : ""}">${esc(l)}</button>`;
   const people = ownerOrder(new Set(rows.map(r => r.assignee).filter(Boolean)));
-  const list = rows.filter(r =>
-    (!f.state || (f.state === "_active" ? REVIEW_ACTIVE.includes(r.state) : r.state === f.state)) &&
-    (!f.who || r.assignee === f.who) &&
-    (!f.stage || (f.stage === "none" ? !rvStage(r) : rvStage(r) === f.stage)) &&
-    (!q || [r.no, r.agency, r.biz1, r.biz2, r.biz3, r.memo].join("\n").toLowerCase().includes(q)));
-  const active = rows.filter(r => REVIEW_ACTIVE.includes(r.state));
-  const cell = (r, k) => `<td class="small nowrap ${r.ov[k] ? "ov" : ""}" ${r.ov[k] ? `title="웹 입력 · ${esc(r.ovBy || "")} · ${esc((r.ovAt || "").slice(0, 10))}"` : ""}>${r[k] ? rvDate(r[k]) : "-"}</td>`;
-  const sel = (id, all, opts, cur) => `<select id="${id}"><option value="">${all}</option>${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  const ovAttr = (r, k) => r.ov[k] ? ` class="ov" title="웹 입력 · ${esc(r.ovBy || "")} · ${esc((r.ovAt || "").slice(0, 10))}"` : "";
+  const td = (r, k) => {
+    if (k === "no") return `<td class="nowrap small">${esc(r.no)}</td>`;
+    if (k === "assignee") return `<td class="nowrap"><span${ovAttr(r, k)}>${esc(r.assignee || "미배정")}</span></td>`;
+    if (k === "kind" || k === "field") return `<td class="nowrap small">${esc(r[k])}</td>`;
+    if (k === "agency") return `<td class="small">${esc(r.agency)}</td>`;
+    if (k === "name") return `<td class="rv-name"><b>${esc(r.name)}</b>${r.type ? `<div class="pt-desc">${esc(r.type)}</div>` : ""}</td>`;
+    if (k === "state") return `<td class="nowrap">${rvPill(r.state)}</td>`;
+    if (k === "age") return `<td class="num nowrap ${r.age >= 60 ? "age-bad" : r.age >= 30 ? "age-warn" : ""}">${r.age === "" ? "" : r.age + "일"}</td>`;
+    if (k === "wait_days") return `<td class="num nowrap small">${r.wait_days === "" ? "" : Math.round(+r.wait_days) + "일"}</td>`;
+    if (k === "memo") return `<td class="small rv-memo"><span${ovAttr(r, k)}>${esc(r.memo)}</span>${r.memo && r.memo_date && !r.ov.memo ? `<small>${rvShortDate(r.memo_date)} 확인</small>` : ""}</td>`;
+    const tip = k === "draft_review" && r.reviewer && !r.ov[k] ? ` title="검토본 담당: ${esc(r.reviewer)}"` : "";
+    return `<td class="nowrap small"${tip}><span${ovAttr(r, k)}>${r[k] ? rvShortDate(r[k]) : ""}</span></td>`;
+  };
 
   el.innerHTML = `
     <div class="stats" style="margin-bottom:16px">
-      <div class="card stat"><div class="dot c-blue">⚖</div><div><div class="num">${rows.length}</div><div class="lbl">전체 협의</div></div></div>
-      <div class="card stat"><div class="dot c-violet">▶</div><div><div class="num">${active.length}</div><div class="lbl">검토 중 (접수완료·검토진행)</div></div></div>
-      <div class="card stat"><div class="dot c-amber">✎</div><div><div class="num">${active.filter(r => r.draft).length}/${active.length}</div><div class="lbl">검토 중 초안작성</div></div></div>
-      <div class="card stat"><div class="dot c-green">✓</div><div><div class="num">${active.filter(r => r.draft_review).length}/${active.length}</div><div class="lbl">검토 중 초안검토</div></div></div>
+      <div class="card stat"><div class="dot c-blue">⚖</div><div><div class="num">${base.length}</div><div class="lbl">협의건</div></div></div>
+      <div class="card stat"><div class="dot c-violet">▶</div><div><div class="num">${open.length}</div><div class="lbl">진행 중 (접수완료 후 미완료)</div></div></div>
+      <div class="card stat"><div class="dot c-amber">✎</div><div><div class="num">${open.filter(r => r.draft).length}/${open.length}</div><div class="lbl">진행 중 초안 작성</div></div></div>
+      <div class="card stat"><div class="dot c-red">!</div><div><div class="num">${open.filter(r => r.age >= 30).length}</div><div class="lbl">경과 30일 이상 (60일 이상 ${open.filter(r => r.age >= 60).length})</div></div></div>
     </div>
     <div class="toolbar">
-      ${sel("rvState", "전체 진행상태", [["_active", "검토 중 전체"], ...states.map(s => [s, `${s} (${rows.filter(r => r.state === s).length})`])], f.state)}
-      ${sel("rvWho", "전체 담당자", people.map(p => [p, `${p} (${rows.filter(r => r.assignee === p).length})`]), f.who)}
-      <div class="seg">${[["", "전체"], ["none", "초안 전"], ["초안작성", "초안작성"], ["초안검토", "초안검토"], ["송부", "송부"]].map(([v, l]) =>
-        `<button data-stage="${v}" class="${f.stage === v ? "on" : ""}">${l}</button>`).join("")}</div>
-      <input id="rvQ" placeholder="검색 (협의번호·기관·사업명·메모)" value="${esc(f.q)}" style="margin-left:auto;min-width:220px">
+      <div class="seg">${chip("rk", "", "전체")}${chip("rk", "중앙부처", "중앙부처")}${chip("rk", "지자체", "지자체")}</div>
+      <select id="rvField"><option value="">전체 분야</option>${opts([...new Set(rows.map(r => r.field).filter(Boolean))].sort().map(x => [x, x]), f.field)}</select>
+      <select id="rvWho"><option value="">전체 검토자</option>${opts([...people.map(p => [p, p]), ["_none", "미배정"]], f.who)}</select>
+      <input id="rvQ" placeholder="사업명·부처·메모로 찾기" value="${esc(f.q)}" style="margin-left:auto;min-width:220px">
     </div>
-    <div class="card"><div class="table-wrap"><table class="rvtable">
-      <thead><tr><th>협의번호</th><th>기관</th><th style="width:30%">사업명</th><th>진행상태</th><th>담당</th>
-        <th>접수</th><th>검토완료</th><th>초안작성</th><th>초안검토</th><th>중기청송부</th><th>메모</th><th></th></tr></thead>
-      <tbody>${list.map(r => `<tr>
-        <td class="nowrap small">${esc(r.no)}</td>
-        <td class="small"><span class="muted">${esc(r.kind)}</span><br>${esc(r.agency)}</td>
-        <td><div class="pt-name">${esc(r.biz3 || r.biz2 || r.biz1)}</div>
-          <div class="pt-desc">${esc([[r.biz3 && r.biz2, r.biz2 && r.biz1].filter(Boolean).reverse().join(" › "), r.type, r.field].filter(Boolean).join(" · "))}</div></td>
-        <td class="nowrap">${pill("rv-" + (r.state || "").replace(/\(.*$/, ""), r.state || "-")}</td>
-        <td class="nowrap ${r.ov.assignee ? "ov" : ""}">${esc(r.assignee || "-")}</td>
-        ${cell(r, "received")}${cell(r, "reviewed")}${cell(r, "draft")}${cell(r, "draft_review")}${cell(r, "sent")}
-        <td class="small ${r.ov.memo ? "ov" : ""}">${esc(r.memo)}</td>
-        <td><button class="btn-sm" data-rv="${esc(r.no)}">입력</button></td>
-      </tr>`).join("") || `<tr><td colspan="12" class="empty">조건에 맞는 협의가 없습니다.</td></tr>`}</tbody>
+    <div class="toolbar">
+      <div class="seg wrap">${chip("rs", "_open", `진행 중 ${open.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}</div>
+      <span class="muted small" style="margin-left:auto">${list.length}건</span>
+    </div>
+    <div class="card"><div class="table-wrap rv-wrap"><table class="rvtable">
+      <thead><tr>${RV_COLS.map(([k, l]) => `<th><button class="th-sort" data-sort="${k}">${l}${sk === k ? (dir > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("")}<th></th></tr></thead>
+      <tbody>${list.map(r => `<tr>${RV_COLS.map(([k]) => td(r, k)).join("")}<td><button class="btn-sm" data-rv="${esc(r.no)}">입력</button></td></tr>`).join("")
+        || `<tr><td colspan="${RV_COLS.length + 1}" class="empty">조건에 맞는 협의건이 없습니다.</td></tr>`}</tbody>
     </table></div>
-    <p class="small muted" style="margin:12px 0 0">※ 원본: ${esc(file)} · <span class="ov-key">파란 글씨</span>는 웹에서 입력한 값으로, 엑셀 값보다 우선합니다. ${list.length}건 표시</p></div>`;
+    <p class="small muted" style="margin:12px 0 0">※ 원본: 사전협의 대시보드 수집분(${esc(file)}, ${esc(collected)}) — SIMS 사전협의목록과 원드라이브 ①~② 폴더 업로드일.
+      접수 처리기간은 접수~접수완료, 경과일은 접수완료일부터 오늘까지(진행 중 건만, 30일↑ 주황·60일↑ 빨강).
+      <span class="ov-key">파란 글씨</span>는 웹에서 입력한 값으로 수집값보다 우선합니다.</p></div>`;
 
-  const on = (id, key) => { $("#" + id).onchange = ev => { f[key] = ev.target.value; renderReviewList(); }; };
-  on("rvState", "state"); on("rvWho", "who");
-  el.querySelectorAll("[data-stage]").forEach(b => b.onclick = () => { f.stage = b.dataset.stage; renderReviewList(); });
+  el.querySelectorAll("[data-rk]").forEach(b => b.onclick = () => { f.kind = b.dataset.rk; renderReviewList(); });
+  el.querySelectorAll("[data-rs]").forEach(b => b.onclick = () => { f.stage = b.dataset.rs; renderReviewList(); });
+  $("#rvField").onchange = ev => { f.field = ev.target.value; renderReviewList(); };
+  $("#rvWho").onchange = ev => { f.who = ev.target.value; renderReviewList(); };
+  el.querySelectorAll("[data-sort]").forEach(b => b.onclick = () => {
+    const k = b.dataset.sort;
+    f.sort = [k, f.sort[0] === k ? -f.sort[1] : (RV_NUM.has(k) ? -1 : 1)];
+    renderReviewList();
+  });
   const rq = $("#rvQ");
   rq.oninput = () => {
     f.q = rq.value;
@@ -1050,32 +1082,26 @@ function renderReviewList() {
 }
 
 function openReview(r) {
-  const dateVal = s => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "");
   const names = state.data.members.map(m => m.name);
-  const xl = k => r.xl[k] ? ` · 엑셀: ${r.xl[k]}` : " · 엑셀: 비어 있음";
+  const was = k => ` · 수집값: ${r.xl[k] || "없음"}`;
   openForm({
-    title: `${r.no} · ${r.biz3 || r.biz2 || r.biz1}`,
-    data: { assignee: r.assignee, draft: dateVal(r.draft), draft_review: dateVal(r.draft_review), sent: dateVal(r.sent), memo: r.memo },
+    title: `${r.no} · ${r.name}`,
+    data: { assignee: r.assignee, draft: r.draft, draft_review: r.draft_review, memo: r.memo },
     fields: [
-      { name: "assignee", label: "검토담당자" + xl("assignee"), type: "select",
-        options: [["", "-"], ...[...new Set([...names, r.assignee].filter(Boolean))].map(n => [n, n])] },
-      [{ name: "draft", label: "초안작성", type: "date" }, { name: "draft_review", label: "초안검토", type: "date" }],
-      { name: "sent", label: "중기청송부", type: "date" },
+      { name: "assignee", label: "검토자" + was("assignee"), type: "select",
+        options: [["", "미배정"], ...[...new Set([...names, r.assignee, r.xl.assignee].filter(Boolean))].map(n => [n, n])] },
+      [{ name: "draft", label: "초안 작성" + was("draft"), type: "date" }, { name: "draft_review", label: "검토본" + was("draft_review"), type: "date" }],
       { name: "memo", label: "메모", type: "textarea", rows: 3 },
     ],
-    // 엑셀과 같은 값은 저장하지 않아(null) 이후 엑셀이 바뀌면 그대로 따라가게 한다
+    // 수집값과 같은 값은 저장하지 않아(null) 이후 수집값이 바뀌면 그대로 따라가게 한다
     onSave: v => {
       const row = { no: r.no, updated_by: state.user.email };
-      REVIEW_EDIT.forEach(k => {
-        // 날짜로 해석되지 않는 엑셀 원문(예: '확인중')은 날짜칸이 비어 보이므로 비워 둔 채 저장해도 바꾸지 않은 것으로 본다
-        const xv = k === "assignee" || k === "memo" ? r.xl[k] || "" : dateVal(r.xl[k] || "");
-        row[k] = v[k] === xv ? null : v[k];
-      });
+      REVIEW_EDIT.forEach(k => { row[k] = v[k] === (r.xl[k] || "") ? null : v[k]; });
       return must(sb.from("hr_review").upsert(row));
     },
     onDelete: Object.keys(r.ov).length ? (() => must(sb.from("hr_review").upsert(
       { no: r.no, updated_by: state.user.email, ...Object.fromEntries(REVIEW_EDIT.map(k => [k, null])) }))) : null,
-    deleteLabel: "엑셀 값으로 되돌리기",
+    deleteLabel: "수집값으로 되돌리기",
   });
 }
 
