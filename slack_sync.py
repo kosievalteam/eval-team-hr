@@ -103,3 +103,11 @@ def sync(cfg):
         return f"Slack 공지 동기화 · 가져옴 {pulled}건 · 게시 {posted}건"
     except Exception as e:  # Slack 장애·권한 문제로 데이터 배포까지 막지 않는다
         return f"[경고] Slack 공지 동기화 실패: {e}"
+
+
+if __name__ == "__main__":  # 배포 없이 Slack 동기화만 시험: python slack_sync.py
+    import sys
+
+    import server
+    sys.stdout.reconfigure(encoding="utf-8")
+    print(sync(server.load_config()) or f"Slack 설정이 없습니다: {SLACK_TOKEN} 또는 config.json의 slack_channel")

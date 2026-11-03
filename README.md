@@ -33,7 +33,7 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 - `배포.bat`이 실행될 때 `slack_sync.py`가 양방향으로 동기화합니다(실패해도 배포는 계속).
   - Slack → HR앱: `config.json`의 `slack_channel` 최근 200개 메시지를 공지사항에 **Slack** 표시로 보여줌(읽기 전용)
   - HR앱 → Slack: 아직 게시하지 않은 웹 공지를 채널에 게시. 게시 후 수정·삭제는 Slack에 반영되지 않음
-- 필요: Slack 앱 Bot token(`xoxb-…`, 권한 `channels:history`·`chat:write`·`users:read`)을 `.secret/slack_token.txt`에 저장하고, 채널에서 `/invite @앱이름`
+- 필요: Slack 앱 Bot token(`xoxb-…`, 권한 `channels:history`·`groups:history`·`chat:write`·`users:read`, `slack_app_manifest.json`으로 생성)을 `.secret/slack_token.txt`에 저장하고, 채널에서 `/invite @앱이름`
 
 ## 연차 입력 규칙 (구분 열)
 - `연차` 1일 / `오전반차`·`오후반차` 0.5일 / `시간단위휴가(10:00~14:00)` 시간÷8
