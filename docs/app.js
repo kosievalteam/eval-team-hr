@@ -74,8 +74,8 @@ function pill(cls, text) { return `<span class="pill ${cls}">${esc(text)}</span>
 // 엑셀 데이터: 로컬은 /api/data(엑셀 직접), 웹(GitHub Pages)은 배포 때 올린 Supabase 스냅샷.
 // 공지·웹 입력(휴가·주간업무·개인업무·협의검토)은 두 경우 모두 Supabase에서 읽고 쓴다.
 const STATIC = !!window.HR_STATIC;
-const SUPABASE_URL = "https://ryrhtvaeutqejdekpari.supabase.co";
-const SUPABASE_KEY = "sb_publishable_DBRKg4svB4CBjiMptQTD2Q_ywYTTYIL";
+const SUPABASE_URL = "https://shlaohieozqanatatlzf.supabase.co";  // evalteam_HR (HR앱 전용)
+const SUPABASE_KEY = "sb_publishable_4ewcesIWvPxP1JL2ck7jvw_hcbWcS68";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // 이 Supabase 프로젝트는 여러 앱이 함께 쓴다. 가입 확인·비밀번호 재설정 메일이 다른 앱(Site URL)이 아니라
 // 지금 보고 있는 HR앱 주소로 돌아오게 지정한다(Supabase › Authentication › URL Configuration › Redirect URLs에 등록 필요).

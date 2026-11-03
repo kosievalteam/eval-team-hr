@@ -3,7 +3,7 @@
 OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을 합쳐 보여주는 웹앱입니다.
 
 ## 실행
-- 웹: https://kosievalteam.github.io/eval-team-hr/ → `@kosi.re.kr` 계정으로 로그인 (사업정보 검색 시스템과 같은 계정)
+- 웹: https://evalteamhr.vercel.app/ (또는 https://kosievalteam.github.io/eval-team-hr/) → `@kosi.re.kr` 계정으로 로그인 (HR앱 전용 계정)
 - 로컬: `HR앱 실행.bat` 더블클릭 → http://127.0.0.1:8765 (엑셀을 바로 읽음, 로그인은 동일)
 - 필요: Python 3, `pip install openpyxl`
 
@@ -59,13 +59,11 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 - 저장소(공개)에는 화면 파일만 올라갑니다. 데이터는 Supabase에서 팀원 로그인 후에만 읽을 수 있습니다(RLS).
 
 ## 계정·팀원 명단
-- 로그인 계정은 Supabase `kosievalteam's Project`의 Auth 계정입니다(`@kosi.re.kr`만 가입 가능).
+- 로그인 계정은 HR앱 전용 Supabase 프로젝트 `evalteam_HR`의 Auth 계정입니다(`@kosi.re.kr`만 가입 가능). 2026-11-04에 `kosievalteam's Project`에서 데이터를 옮겼고(tools/migrate_to_evalteam_hr.py), 계정은 팀원이 새로 가입했습니다.
 - `config.json`의 `members[].email`에 있는 계정만 HR앱에 들어올 수 있습니다. 명단을 바꾸면 `배포.bat`을 실행해야 반영됩니다.
 - 계정이 없는 팀원은 로그인 화면의 ‘가입하기’로 만듭니다. 비밀번호를 잊으면 ‘비밀번호를 잊었나요?’로 재설정 메일을 받습니다.
-- 이 Supabase 프로젝트는 여러 앱(biz_·chat_·dl_·gonggo_·hr_)이 로그인 계정을 함께 씁니다. 데이터는 표마다 RLS로 나뉩니다.
-  - **Site URL은 바꾸지 않습니다**(다른 앱의 메일 링크가 바뀜). HR앱은 메일을 보낼 때 자기 주소로 돌아오게 지정합니다.
-  - 대신 Authentication › URL Configuration › **Redirect URLs**에 HR앱 주소를 등록해야 합니다:
-    `https://evalteamhr.vercel.app/**`, `https://kosievalteam.github.io/eval-team-hr/**`
+- `evalteam_HR`은 HR앱 전용이라 Authentication › URL Configuration의 **Site URL**을 `https://evalteamhr.vercel.app`으로 둡니다.
+  **Redirect URLs**: `https://evalteamhr.vercel.app/**`, `https://kosievalteam.github.io/eval-team-hr/**` (HR앱은 메일 링크를 지금 주소로 돌아오게 지정)
 
 ## 설정 (`config.json`)
 - `members[]`: `name`, `email`(로그인 계정), `admin`, `total`(2026년 부여 연차일수), `prior_used`(엑셀 기록 전 사용 일수)
