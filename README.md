@@ -50,13 +50,10 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 - 주말·공휴일은 기간 계산에서 제외
 
 ## 협의검토 자동 갱신 (작업 스케줄러, 이 PC가 켜져 있어야 함)
-- `정책평가팀 HR 협의검토 SIMS` 매일 09:30 → `tools
-eview_update.bat sims` (SIMS + 원드라이브 수집 → HR앱 업로드)
-- `정책평가팀 HR 협의검토 원드라이브` 2시간마다 → `tools
-eview_update.bat onedrive` (원드라이브 ①~④ 폴더 → HR앱 업로드, 휴가 엑셀도 함께 갱신)
+- `정책평가팀 HR 협의검토 SIMS` 매일 09:30 → `toolseview_update.bat sims` (SIMS + 원드라이브 수집 → HR앱 업로드)
+- `정책평가팀 HR 협의검토 원드라이브` 2시간마다 → `toolseview_update.bat onedrive` (원드라이브 ①~④ 폴더 → HR앱 업로드, 휴가 엑셀도 함께 갱신)
 - 두 작업 모두 '절전 해제(WakeToRun)'와 '놓친 일정 바로 실행(StartWhenAvailable)'이 켜져 있어, PC가 절전 중이어도 깨워서 돌립니다(종료·최대 절전·로그아웃 상태는 불가).
-- 기록: `logs
-eview_YYYYMMDD.log`. SIMS 수집에는 `사전협의\다운로드\sims_register.py`로 등록한 로그인 정보가 필요합니다.
+- 기록: `logseview_YYYYMMDD.log`. SIMS 수집에는 `사전협의\다운로드\sims_register.py`로 등록한 로그인 정보가 필요합니다.
 
 ## 웹 배포
 - 주소: GitHub Pages(https://kosievalteam.github.io/eval-team-hr/)와 Vercel(프로덕션) 두 곳. 둘 다 `docs/`를 그대로 서비스합니다.
