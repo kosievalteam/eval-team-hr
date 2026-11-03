@@ -42,7 +42,7 @@ button, input, select, textarea { font: inherit; }
 }
 .brand-logo img { display: block; height: 22px; width: auto; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.25; }
-.brand-text b { color: #fff; font-weight: 700; }
+.brand-text b { color: #fff; font-weight: 700; font-size: 1.3em; }
 .brand-text small { font-size: 12px; color: #8a93a6; }
 .gate-box .brand-logo { margin: 0 auto 4px; border: 1px solid var(--line); }
 .stats-table { font-size: 13px; }
