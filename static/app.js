@@ -1621,6 +1621,7 @@ function renderReviewList() {
     <div class="toolbar">
       <div class="seg wrap">${chip("rs", "_open", `진행 중 ${active.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}${chip("rs", "_nofinal", `최종(팀장) 전 ${base.filter(noFinal).length}`)}</div>
       <span class="muted small" style="margin-left:auto">${list.length}건</span>
+      <button class="btn-sec" id="btnRvXlsx" ${list.length ? "" : "disabled"} title="지금 걸러진 목록을 화면 순서대로 내려받습니다">⬇ 엑셀 다운로드</button>
     </div>
     <div class="card"><div class="table-wrap rv-wrap"><table class="rvtable">
       <thead><tr>${RV_COLS.map(([k, l]) => `<th><button class="th-sort" data-sort="${k}">${l}${sk === k ? (dir > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("")}<th></th></tr></thead>
@@ -1648,6 +1649,17 @@ function renderReviewList() {
     const n = $("#rvQ"); n.focus(); n.setSelectionRange(pos, pos);
   };
   el.querySelectorAll("[data-rv]").forEach(b => b.onclick = () => openReview(rows.find(r => r.no === b.dataset.rv)));
+  // 엑셀 다운로드: 화면에 보이는 목록(거르개·정렬 그대로) + 사업유형·경과일
+  $("#btnRvXlsx").onclick = async ev => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    const cols = RV_COLS.flatMap(c => c[0] === "name" ? [c, ["type", "사업유형"]] : c[0] === "state" ? [c, ["age", "경과일"]] : [c]);
+    try {
+      await downloadXlsx(`협의검토_${state.data.today}.xlsx`, "협의검토", cols.map(c => c[1]),
+        list.map(r => cols.map(([k]) => k === "assignee" ? r.assignee || "미배정" : r[k] ?? "")));
+    } catch (err) { alert(`엑셀 파일을 만들지 못했습니다. (${err.message || err})`); }
+    btn.disabled = false;
+  };
 }
 
 function openReview(r) {
