@@ -67,6 +67,8 @@ def build_docs():
         version[name] = hashlib.sha256((DOCS / name).read_bytes()).hexdigest()[:10]
     for img in server.STATIC.glob("*.png"):  # 로고 등 이미지
         shutil.copy2(img, DOCS / img.name)
+    if (server.STATIC / "templates").is_dir():  # 주간업무 한글(HWPX) 견본
+        shutil.copytree(server.STATIC / "templates", DOCS / "templates", dirs_exist_ok=True)
     html = (server.STATIC / "index.html").read_text(encoding="utf-8")
     html = html.replace("<head>", '<head>\n<meta name="robots" content="noindex, nofollow">', 1)
     # 파일 내용이 바뀌면 주소도 바뀌게 해 GitHub Pages 캐시(10분)에 옛 화면이 남지 않도록 한다

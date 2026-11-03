@@ -11,4 +11,5 @@ __pycache__/
 # 한글 문서(내부 자료) — 비워 둔 양식(templates/)만 올린다
 *.hwp
 *.hwpx
-!templates/*.hwpx
+!static/templates/*.hwpx
+!docs/templates/*.hwpx

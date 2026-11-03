@@ -29,6 +29,13 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 3. 이후로는 웹에서만 작성합니다. 엑셀(`weekly_file`, `personal_file`)은 더 이상 읽지 않습니다.
 - 다시 가져오기는 막혀 있습니다(`python import_weekly.py --force`로 강제 가능하지만, 엑셀에서 온 항목의 웹 수정 내용이 사라집니다).
 
+## 주간업무 한글(HWPX) 내려받기
+- ‘최종’ 주차에서 팀장 검토가 모두 끝나면 주차별 보기에 **⬇ 주간업무계획**·**⬇ 핵심업무계획** 버튼이 나타납니다.
+- 양식: `static/templates/weekly_plan.hwpx`, `weekly_key.hwpx` — 실제 주간 문서(HWPX)에서 내용만 비운 견본(저장소 공개라 실제 내용은 넣지 않음)
+  - 양식이 바뀌면 한글에서 새 문서를 HWPX로 저장한 뒤: `python tools/make_hwpx_templates.py <주간업무계획.hwpx> <주간핵심업무계획.hwpx>`
+- 업무영역 표기: 만족도조사 → 정책만족도, 현황조사 → 현황조사 및 현행화 (`static/app.js`의 `AREA_HWP`)
+- 계획 칸에서 진행 칸과 달라진 낱말은 양식처럼 파란 글자로 표시합니다. 핵심업무계획에는 각 업무영역의 ‘핵심 업무 계획’ 줄이 들어갑니다.
+
 ## Slack 공지 연동
 - `배포.bat`이 실행될 때 `slack_sync.py`가 양방향으로 동기화합니다(실패해도 배포는 계속).
   - Slack → HR앱: `config.json`의 `slack_channel` 최근 200개 메시지를 공지사항에 **Slack** 표시로 보여줌(읽기 전용)

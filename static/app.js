@@ -669,6 +669,10 @@ function renderTasks() {
         ${w.status ? pill("s-" + w.status, w.status) : ""}
         ${canEditWeek(w) ? `<button class="btn-sm" id="btnWeekSet">주차 설정</button>` : ""}
         ${final && lead && reviewed < w.items.length ? `<button class="btn-sm" id="btnReviewAll">✓ 전체 검토 완료</button>` : ""}
+        ${final && w.items.length && reviewed === w.items.length ? `
+          <button class="btn-sm" id="btnHwpPlan" title="한글(HWPX) 양식 그대로 내려받기">⬇ 주간업무계획</button>
+          <button class="btn-sm" id="btnHwpKey" title="한글(HWPX) 양식 그대로 내려받기">⬇ 핵심업무계획</button>`
+        : final ? `<span class="small muted" title="팀장 검토가 모두 끝나면 한글 파일을 내려받을 수 있습니다">한글 다운로드: 검토 ${reviewed}/${w.items.length}</span>` : ""}
         <input id="taskQ" placeholder="검색 (업무·키워드·작성자)" value="${esc(state.taskQuery)}" style="margin-left:auto;min-width:220px">
         <button class="btn-sec" id="btnNewWeek">+ 새 주차</button>
         <button class="btn-pri" id="btnNewWeekly">+ 업무 추가</button>
@@ -729,6 +733,8 @@ function renderTasks() {
     } catch (err) { alert(err.message || err); ctl.disabled = false; }
   };
   el.querySelectorAll("[data-review]").forEach(c => c.onchange = () => setReviewed([Number(c.dataset.review)], c.checked, c));
+  const hp = $("#btnHwpPlan"); if (hp) hp.onclick = () => downloadHwpx(buildPlanHwpx, weeks[state.weekIdx], hp);
+  const hk = $("#btnHwpKey"); if (hk) hk.onclick = () => downloadHwpx(buildKeyHwpx, weeks[state.weekIdx], hk);
   const ra = $("#btnReviewAll");
   if (ra) ra.onclick = () => {
     const w = weeks[state.weekIdx];
@@ -758,6 +764,212 @@ function statsTable(s) {
     <thead><tr><th>구분</th>${REVIEW_STATS.map(([, l]) => `<th class="num">${l}</th>`).join("")}<th class="num">합계(누적)</th></tr></thead>
     <tbody><tr><td>광역지자체</td>${REVIEW_STATS.map(([k]) => `<td class="num">${s[k] ?? "-"}</td>`).join("")}<td class="num"><b>${statsTotal(s)}</b></td></tr></tbody>
   </table></div>`;
+}
+
+/* ------------------------------------------------------------ 주간업무 한글(HWPX) 내려받기 */
+// static/templates/*.hwpx는 tools/make_hwpx_templates.py가 실제 양식에서 내용만 비워 만든 견본이다.
+// 견본 문단(빈 줄·{{L1}}·{{L2}})을 복제해 채우므로 글꼴·문단 모양·표 서식은 양식 그대로 유지된다.
+const HP_NS = "http://www.hancom.co.kr/hwpml/2011/paragraph";
+const HH_NS = "http://www.hancom.co.kr/hwpml/2011/head";
+const AREA_HWP = { "만족도조사": "정책만족도", "현황조사": "현황조사 및 현행화" };  // 웹 업무영역 → 보고서 표기
+
+const hxAll = (el, name) => [...el.getElementsByTagNameNS(HP_NS, name)];
+const hxKids = (el, name) => [...el.children].filter(c => c.namespaceURI === HP_NS && c.localName === name);
+function hxUp(el, name) {
+  while (el && !(el.namespaceURI === HP_NS && el.localName === name)) el = el.parentNode;
+  return el;
+}
+function hxReplace(root, marker, value) {
+  hxAll(root, "t").filter(t => t.textContent.includes(marker)).forEach(t => {
+    t.textContent = t.textContent.replace(marker, value);
+    hxKids(hxUp(t, "p"), "linesegarray").forEach(x => x.remove());  // 줄 배치는 한글이 다시 계산한다
+  });
+}
+// 검정 글자 모양 id → 같은 모양의 파란 글자 id (양식에서 '지난주와 달라진 계획'을 파랗게 쓴다)
+function blueStyles(headerDoc) {
+  const key = el => { const c = el.cloneNode(true); c.removeAttribute("id"); c.removeAttribute("textColor"); return new XMLSerializer().serializeToString(c); };
+  const blue = {}, byKey = {};
+  const all = [...headerDoc.getElementsByTagNameNS(HH_NS, "charPr")];
+  all.filter(c => (c.getAttribute("textColor") || "").toUpperCase() === "#0000FF").forEach(c => (byKey[key(c)] ||= c.getAttribute("id")));
+  all.forEach(c => { const b = byKey[key(c)]; if (b) blue[c.getAttribute("id")] = b; });
+  return blue;
+}
+// 웹 입력 줄 → 보고서 문단: '- ' 항목(앞에 빈 줄)과 ' * ' 세부항목. 진행현황 줄은 표로 따로 넣는다.
+function hwpLines(text) {
+  const out = [];
+  String(text || "").replace(/`/g, "’").split("\n").forEach(raw => {
+    const s = raw.replace(/\s+$/, ""), t = s.trim();
+    if (!t || /^<.*진행현황.*>$/.test(t) || /^\[(구분|광역지자체)\]/.test(t)) return;
+    if (/^[-ㅇ○●]/.test(t) && !/^\s/.test(s)) out.push({ l1: true, text: "- " + t.replace(/^[-ㅇ○●]\s*/, "") });
+    else if (/^[*\-]/.test(t)) out.push({ l1: false, text: ` ${t[0]} ` + t.replace(/^[*\-]\s*/, "") });
+    else out.push({ l1: false, text: " " + t });
+  });
+  return out;
+}
+function statsFromText(text) {
+  const m = String(text || "").match(/\[광역지자체\]\s*([\d\s/]+)/);
+  if (!m) return null;
+  const n = m[1].split("/").map(x => Number(x.trim()));
+  return Object.fromEntries(REVIEW_STATS.map(([k], i) => [k, Number.isFinite(n[i]) ? n[i] : null]));
+}
+// 계획 줄에서 진행 칸의 가장 비슷한 줄에 없는 낱말만 파랗게 표시한다(양식 원본의 표기 방식).
+// 반환: [[글자, 파랑여부], ...] 같은 색끼리 묶은 조각
+function diffSegments(text, others) {
+  const tok = s => s.split(/(?<=\s)(?=\S)/);  // 낱말 + 뒤 공백
+  const norm = t => t.trim().replace(/[‘’'`]/g, "'");
+  const a = tok(text);
+  let best = null, bestN = 0;
+  others.forEach(o => {
+    const b = tok(o), dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+    for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--)
+      dp[i][j] = norm(a[i]) === norm(b[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    if (dp[0][0] > bestN) { bestN = dp[0][0]; best = { b, dp }; }
+  });
+  const isWord = t => !!t.trim() && !/^[-*]$/.test(t.trim());
+  const same = new Array(a.length).fill(false);
+  if (best) {
+    for (let i = 0, j = 0; i < a.length && j < best.b.length;) {
+      if (norm(a[i]) === norm(best.b[j])) { same[i] = true; i++; j++; }
+      else if (best.dp[i + 1][j] >= best.dp[i][j + 1]) i++; else j++;
+    }
+  }
+  // 표시(-, *)를 뺀 낱말이 절반도 안 겹치면 완전히 새 줄로 보고 표시만 검정으로 둔다
+  const words = a.filter(isWord).length, matched = a.filter((t, i) => same[i] && isWord(t)).length;
+  if (matched < Math.max(1, words / 2)) a.forEach((t, i) => (same[i] = !isWord(t)));
+  const segs = [];
+  a.forEach((t, i) => {
+    const b = !same[i] && !!t.trim();
+    if (segs.length && segs[segs.length - 1][1] === b) segs[segs.length - 1][0] += t; else segs.push([t, b]);
+  });
+  return segs;
+}
+function fillHwpCell(tc, lines, blue, compare) {
+  const sub = hxKids(tc, "subList")[0];
+  const [spacer, l1, l2, anchor] = hxKids(sub, "p");
+  [spacer, l1, l2].forEach(p => p.remove());
+  lines.forEach(ln => {
+    if (ln.l1) sub.insertBefore(spacer.cloneNode(true), anchor || null);
+    const p = (ln.l1 ? l1 : l2).cloneNode(true);
+    hxReplace(p, ln.l1 ? "{{L1}}" : "{{L2}}", ln.text);
+    if (compare) {
+      const run = hxAll(p, "run").find(r => hxKids(r, "t").length);
+      const black = run.getAttribute("charPrIDRef");
+      if (blue[black]) {
+        const segs = diffSegments(ln.text, compare);
+        segs.forEach(([txt, isBlue], i) => {
+          const r = i ? run.cloneNode(true) : run;
+          hxKids(r, "t")[0].textContent = txt;
+          r.setAttribute("charPrIDRef", isBlue ? blue[black] : black);
+          if (i) p.insertBefore(r, segs[i - 1].el.nextSibling);
+          segs[i].el = r;
+        });
+      }
+    }
+    sub.insertBefore(p, anchor || null);
+  });
+  if (anchor && lines.length) sub.insertBefore(spacer.cloneNode(true), anchor);  // 진행현황 앞 빈 줄
+}
+function hwpWeekInfo(w) {
+  const m = w.title.match(/(\d{2})년\s*(\d{1,2})월\s*([\d·,]+)주차/) || [];
+  const year = m[1] ? 2000 + Number(m[1]) : Number(state.data.today.slice(0, 4));
+  const label = m[2] ? `${Number(m[2])}월 ${m[3]}주차` : w.title;
+  const d = w.plan_label.match(/(\d{1,2})\/(\d{1,2})/);
+  let range = "";
+  if (d) {
+    const start = `${year}-${String(d[1]).padStart(2, "0")}-${String(d[2]).padStart(2, "0")}`, end = addDays(start, 4);
+    const f = s => `${Number(s.slice(5, 7))}.${Number(s.slice(8))}`;
+    range = `(${f(start)}~${f(end)})`;
+  }
+  return { year, label, range };
+}
+const hwpLabel = l => l.replace(/^진행/, "계획").replace(/\s*,[^)]*\)/, ")");
+async function loadZip() {
+  if (!window.JSZip) await new Promise((ok, fail) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+    s.onload = ok; s.onerror = () => fail(new Error("압축 라이브러리를 불러오지 못했습니다"));
+    document.head.appendChild(s);
+  });
+  return window.JSZip;
+}
+async function openHwpx(name) {
+  const JSZip = await loadZip();
+  const res = await fetch(`templates/${name}.hwpx`, { cache: "no-cache" });
+  if (!res.ok) throw new Error("한글 양식 파일을 찾지 못했습니다");
+  const zip = await JSZip.loadAsync(await res.arrayBuffer());
+  const parse = async path => new DOMParser().parseFromString(await zip.file(path).async("string"), "application/xml");
+  return { zip, sec: await parse("Contents/section0.xml"), head: await parse("Contents/header.xml") };
+}
+async function packHwpx({ zip, sec }) {
+  zip.file("Contents/section0.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>' + new XMLSerializer().serializeToString(sec.documentElement));
+  zip.file("mimetype", "application/hwp+zip", { compression: "STORE" });  // 맨 앞·무압축 유지
+  return zip.generateAsync({ type: "blob", compression: "DEFLATE", mimeType: "application/hwp+zip" });
+}
+
+async function buildPlanHwpx(w) {
+  const doc = await openHwpx("weekly_plan");
+  const { sec } = doc, blue = blueStyles(doc.head), info = hwpWeekInfo(w);
+  const main = hxAll(sec, "tbl").find(t => t.getAttribute("colCnt") === "3");
+  const [, , normal, review] = hxKids(main, "tr");
+  normal.remove(); review.remove();
+  w.items.forEach((it, i) => {
+    const isRv = isReviewArea(it.area);
+    const tr = (isRv ? review : normal).cloneNode(true);
+    const [c0, c1, c2] = hxKids(tr, "tc");
+    [c0, c1, c2].forEach(tc => hxKids(tc, "cellAddr")[0].setAttribute("rowAddr", String(2 + i)));
+    hxReplace(c0, "{{AREA}}", AREA_HWP[it.area] || it.area);
+    const prog = hwpLines(it.progress), plan = hwpLines(it.plan);
+    fillHwpCell(c1, prog, blue, null);
+    fillHwpCell(c2, plan, blue, prog.map(l => l.text));
+    if (isRv) {
+      const s = it.stats && REVIEW_STATS.some(([k]) => it.stats[k] != null) ? it.stats : statsFromText(it.progress);
+      const sub = hxKids(c1, "subList")[0], rest = hxKids(sub, "p").slice(-3);  // 빈 줄, '<사전협의 진행현황>', 표 문단
+      if (s) {
+        REVIEW_STATS.forEach(([k]) => hxReplace(c1, `{{${k}}}`, s[k] == null ? "-" : String(s[k])));
+        hxReplace(c1, "{{total}}", String(statsTotal(s)));
+      } else rest.forEach(p => p.remove());
+    }
+    main.appendChild(tr);
+  });
+  main.setAttribute("rowCnt", String(2 + w.items.length));
+  hxReplace(sec, "{{PROG_LABEL}}", hwpLabel(w.progress_label));
+  hxReplace(sec, "{{PLAN_LABEL}}", hwpLabel(w.plan_label));
+  hxReplace(sec, "{{HEADING}}", `${info.year}년 ${info.label}${info.range}`);
+  return { blob: await packHwpx(doc), name: `주간업무계획 ${info.label}_평가팀` };
+}
+
+async function buildKeyHwpx(w) {
+  const doc = await openHwpx("weekly_key");
+  const { sec } = doc, info = hwpWeekInfo(w);
+  const lines = w.items.flatMap(it => String(it.key || "").replace(/`/g, "’").split("\n"))
+    .map(s => s.trim().replace(/^[-ㅇ○●*]\s*/, "")).filter(Boolean);
+  const t = hxAll(sec, "t").find(x => x.textContent.includes("{{KEY}}"));
+  const sub = hxUp(t, "subList");
+  const [item, spacer] = hxKids(sub, "p");
+  item.remove(); spacer.remove();
+  lines.forEach((ln, i) => {
+    if (i) sub.appendChild(spacer.cloneNode(true));
+    const p = item.cloneNode(true);
+    hxReplace(p, "{{KEY}}", ln);
+    sub.appendChild(p);
+  });
+  if (!lines.length) sub.appendChild(spacer);
+  hxReplace(sec, "{{TITLE}}", `${info.year}년 ${info.label} 중소벤처기업연구원 부서별 핵심 업무 계획`);
+  return { blob: await packHwpx(doc), name: `주간핵심업무계획 ${info.label}_평가팀` };
+}
+
+async function downloadHwpx(build, w, btn) {
+  btn.disabled = true;
+  try {
+    const { blob, name } = await build(w);
+    const t = state.data.today.replace(/-/g, "").slice(2);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `#${t}_${name}.hwpx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (err) { alert(`한글 파일을 만들지 못했습니다. (${err.message || err})`); }
+  btn.disabled = false;
 }
 
 // 주간업무계획은 팀 공동 문서라 팀원 누구나 고칠 수 있다. 삭제는 작성자·관리자, 팀장 검토 표시는 관리자만.
