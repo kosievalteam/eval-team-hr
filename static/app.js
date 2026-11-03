@@ -15,12 +15,10 @@ const state = {
   pOwner: "",
   pStatus: "",
   user: null,
-  rvTab: "list",
   rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["age", -1] },
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "주간업무관리", reviews: "협의검토관리", pclog: "공용 PC 사용대장", leave: "복무관리" };
-const REVIEW_DASHBOARD = "https://kosievalteam.github.io/newbiz_dashboard/";
+const PAGES = { dashboard: "대시보드", notices: "공지사항", duty: "업무분장표", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", pclog: "공용 PC 사용대장", leave: "복무관리" };
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const $ = (s, el = document) => el.querySelector(s);
@@ -440,7 +438,7 @@ function render() {
   document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("active", a.dataset.page === state.page));
   Object.keys(PAGES).forEach(p => ($("#page-" + p).hidden = p !== state.page));
   $("#pageTitle").textContent = PAGES[state.page];
-  ({ dashboard: renderDashboard, notices: renderNotices, tasks: renderTasks, reviews: renderReviews, pclog: renderPcLog, leave: renderLeave })[state.page]();
+  ({ dashboard: renderDashboard, notices: renderNotices, duty: renderDuty, tasks: renderTasks, personal: renderPersonal, reviews: renderReviews, pclog: renderPcLog, leave: renderLeave })[state.page]();
 }
 
 /* ------------------------------------------------------------ dashboard */
@@ -652,19 +650,13 @@ function renderTasks() {
   const weeks = state.data.weeks;
   const el = $("#page-tasks");
   state.weekIdx = Math.max(0, Math.min(state.weekIdx, weeks.length - 1));
+  if (!["week", "area"].includes(state.taskTab)) state.taskTab = "week";
   const q = state.taskQuery.trim();
 
   const tabs = `<div class="tabs">
     <button data-tab="week" class="${state.taskTab === "week" ? "active" : ""}">주차별 보기</button>
-    <button data-tab="area" class="${state.taskTab === "area" ? "active" : ""}">업무영역별 추이</button>
-    <button data-tab="person" class="${state.taskTab === "person" ? "active" : ""}">개인별 업무</button></div>`;
+    <button data-tab="area" class="${state.taskTab === "area" ? "active" : ""}">업무영역별 추이</button></div>`;
 
-  if (state.taskTab === "person") {
-    el.innerHTML = tabs + personalView();
-    el.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.taskTab = b.dataset.tab; renderTasks(); });
-    bindPersonal(el);
-    return;
-  }
   if (!weeks.length) {
     el.innerHTML = tabs + `<div class="card empty">아직 주차가 없습니다. <button class="btn-pri" id="btnNewWeek">+ 새 주차</button></div>`;
     el.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.taskTab = b.dataset.tab; renderTasks(); });
@@ -1053,6 +1045,12 @@ function weekLabel(w) {
   return w.start ? `${w.title} (${fmtDate(w.start, false)}~${fmtDate(w.end, false)})` : w.title;
 }
 
+function renderPersonal() {
+  const el = $("#page-personal");
+  el.innerHTML = personalView();
+  bindPersonal(el);
+}
+
 function personalView() {
   const weeks = pWeeks();
   if (!weeks.length) return `<div class="card empty">아직 주차가 없습니다. <button class="btn-pri" id="btnNewPWeek">+ 새 주차</button></div>`;
@@ -1144,11 +1142,11 @@ function bindPersonal(el) {
   $("#btnNewPWeek").onclick = () => openNewWeek("report");
   if (!pWeeks().length) return;
   const pws = $("#btnPWeekSet"); if (pws) pws.onclick = () => openWeekSettings("report", pWeeks()[state.pWeek]);
-  el.querySelectorAll("[data-pw]").forEach(b => b.onclick = () => { state.pWeek += Number(b.dataset.pw); renderTasks(); });
+  el.querySelectorAll("[data-pw]").forEach(b => b.onclick = () => { state.pWeek += Number(b.dataset.pw); renderPersonal(); });
   const ws = $("#pWeekSel");
-  ws.onchange = () => { state.pWeek = ws.value === "all" ? "all" : Number(ws.value); renderTasks(); };
-  el.querySelectorAll("[data-ps]").forEach(b => b.onclick = () => { state.pStatus = b.dataset.ps; renderTasks(); });
-  el.querySelectorAll("[data-po]").forEach(b => b.onclick = () => { state.pOwner = b.dataset.po; renderTasks(); });
+  ws.onchange = () => { state.pWeek = ws.value === "all" ? "all" : Number(ws.value); renderPersonal(); };
+  el.querySelectorAll("[data-ps]").forEach(b => b.onclick = () => { state.pStatus = b.dataset.ps; renderPersonal(); });
+  el.querySelectorAll("[data-po]").forEach(b => b.onclick = () => { state.pOwner = b.dataset.po; renderPersonal(); });
   const weeks = pWeeks();
   $("#btnNewTask").onclick = () => openTask(state.pWeek === "all" ? weeks[0] : weeks[state.pWeek], null);
   el.querySelectorAll("[data-tedit]").forEach(b => b.onclick = () => {
@@ -1160,7 +1158,7 @@ function bindPersonal(el) {
   tq.oninput = () => {
     state.taskQuery = tq.value;
     const pos = tq.selectionStart;
-    renderTasks();
+    renderPersonal();
     const n = $("#taskQ"); n.focus(); n.setSelectionRange(pos, pos);
   };
 }
@@ -1428,36 +1426,47 @@ function openLeave(e) {
   });
 }
 
-/* ------------------------------------------------------------ 협의검토관리 */
-// 진행현황 = newbiz_dashboard의 '협의건 일정표'와 같은 열·기준. 검토자·초안 작성·검토본·메모는 웹에서 덮어쓸 수 있다.
+/* ------------------------------------------------------------ 업무분장표 */
+// 팀서무 폴더의 업무분장.xlsx를 서식 없이 표 그대로(병합 셀 포함) 보여준다. 첫 행은 제목 행으로 굵게.
+function renderDuty() {
+  const { duty = [], duty_error: err = "" } = state.data;
+  const table = sh => {
+    const skip = new Set(), span = {};
+    sh.merges.forEach(([r1, c1, r2, c2]) => {
+      span[`${r1},${c1}`] = [r2 - r1 + 1, c2 - c1 + 1];
+      for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) if (r !== r1 || c !== c1) skip.add(`${r},${c}`);
+    });
+    const head = sh.rows.findIndex(r => r.filter(Boolean).length >= 2);  // 첫 번째 '여러 칸이 채워진' 행 = 머리글
+    return `<div class="table-wrap"><table class="duty-table"><tbody>${sh.rows.map((row, r) => `<tr>${row.map((v, c) => {
+      if (skip.has(`${r},${c}`)) return "";
+      const [rs, cs] = span[`${r},${c}`] || [1, 1];
+      const tag = r === head ? "th" : "td";
+      return `<${tag}${rs > 1 ? ` rowspan="${rs}"` : ""}${cs > 1 ? ` colspan="${cs}"` : ""}>${esc(v).replace(/\n/g, "<br>")}</${tag}>`;
+    }).join("")}</tr>`).join("")}</tbody></table></div>`;
+  };
+  $("#page-duty").innerHTML = duty.length
+    ? duty.map(sh => `<div class="card mt"><div class="card-h"><h2>${esc(sh.title)}</h2></div>${table(sh)}</div>`).join("")
+      + `<p class="small muted" style="margin:12px 0 0">※ 원본: OneDrive 업무자료 › 팀서무 › 업무분장.xlsx (배포 때 갱신). 고칠 때는 엑셀에서 고친 뒤 배포하세요.</p>`
+    : `<div class="card empty">업무분장표를 아직 불러오지 못했습니다.${err ? `<br><span class="small muted">${esc(err.replace(/^.*?:\s*/, "").slice(0, 120))}</span>` : ""}<br>
+       <span class="small muted">OneDrive 업무자료 › 팀서무 › 업무분장.xlsx가 이 PC에 내려받아져 있어야 합니다.</span></div>`;
+}
+
+/* ------------------------------------------------------------ 협의검토 */
+// 협의번호~접수완료는 SIMS(매일 09:30), 초안·검토본·수정본·최종(팀장)은 원드라이브 ①~④ 폴더에 처음 올라온 날(2시간마다).
+// 검토자·초안·검토본·메모는 웹에서 덮어쓸 수 있다.
 const REVIEW_EDIT = ["assignee", "draft", "draft_review", "memo"];
 const REVIEW_OPEN = ["접수완료", "검토진행", "재협의대기", "재협의진행"];  // 접수완료 후 아직 끝나지 않은 단계
 const RV_COLS = [
   ["no", "협의번호"], ["assignee", "검토자"], ["kind", "구분"], ["agency", "기관"], ["field", "분야"], ["name", "사업명"],
-  ["state", "진행상태"], ["age", "경과일"], ["received", "접수"], ["accepted", "접수완료"], ["wait_days", "접수 처리기간"],
-  ["draft", "초안 작성"], ["draft_review", "검토본"], ["reviewed", "검토완료"], ["result", "결과서 수령"], ["memo", "메모"],
+  ["state", "진행상태"], ["received", "접수"], ["accepted", "접수완료"],
+  ["draft", "초안"], ["draft_review", "검토본"], ["revised", "수정본"], ["final", "최종(팀장)"], ["memo", "메모"],
 ];
 const RV_NUM = new Set(["age", "wait_days"]);
 
 function renderReviews() {
   const el = $("#page-reviews");
-  // 대시보드 iframe은 한 번만 만들어 두고 탭 전환·새로고침 때 다시 불러오지 않는다
-  if (!$("#rvEmbed", el)) {
-    el.innerHTML = `<div class="tabs" id="rvTabs"></div><div id="rvBody"></div>
-      <div class="card embed-card" id="rvEmbed" hidden>
-        <div class="card-h">
-          <h2>사전협의 검토현황</h2><span class="sub">newbiz_dashboard</span>
-          <a class="right btn-sec" href="${REVIEW_DASHBOARD}" target="_blank" rel="noopener">새 창에서 열기 ↗</a>
-        </div>
-        <iframe class="embed" src="${REVIEW_DASHBOARD}" title="사전협의 검토현황 대시보드" loading="lazy"></iframe>
-      </div>`;
-  }
-  $("#rvTabs").innerHTML = [["list", "진행현황"], ["dash", "대시보드"]].map(([k, t]) =>
-    `<button data-tab="${k}" class="${state.rvTab === k ? "active" : ""}">${t}</button>`).join("");
-  $("#rvTabs").querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.rvTab = b.dataset.tab; renderReviews(); });
-  $("#rvEmbed").hidden = state.rvTab !== "dash";
-  $("#rvBody").hidden = state.rvTab === "dash";
-  if (state.rvTab !== "dash") renderReviewList();
+  if (!$("#rvBody", el)) el.innerHTML = `<div id="rvBody"></div>`;
+  renderReviewList();
 }
 
 // 경과일: 접수완료일부터 오늘까지(진행 중인 건만). 대시보드와 같이 30일 이상 주황, 60일 이상 빨강.
@@ -1534,8 +1543,8 @@ function renderReviewList() {
       <tbody>${list.map(r => `<tr>${RV_COLS.map(([k]) => td(r, k)).join("")}<td><button class="btn-sm" data-rv="${esc(r.no)}">입력</button></td></tr>`).join("")
         || `<tr><td colspan="${RV_COLS.length + 1}" class="empty">조건에 맞는 협의건이 없습니다.</td></tr>`}</tbody>
     </table></div>
-    <p class="small muted" style="margin:12px 0 0">※ 원본: 사전협의 대시보드 수집분(${esc(file)}, ${esc(collected)}) — SIMS 사전협의목록과 원드라이브 ①~② 폴더 업로드일.
-      접수 처리기간은 접수~접수완료, 경과일은 접수완료일부터 오늘까지(진행 중 건만, 30일↑ 주황·60일↑ 빨강).
+    <p class="small muted" style="margin:12px 0 0">※ 수집 ${esc(collected)} — 협의번호~접수완료는 SIMS(매일 09:30), 초안·검토본·수정본·최종(팀장)은
+      원드라이브 검토의견서 ①~④ 폴더에 처음 올라온 날(2시간마다 갱신). 경과일(위 통계)은 접수완료일부터 오늘까지(진행 중 건만).
       <span class="ov-key">파란 글씨</span>는 웹에서 입력한 값으로 수집값보다 우선합니다.</p></div>`;
 
   el.querySelectorAll("[data-rk]").forEach(b => b.onclick = () => { f.kind = b.dataset.rk; renderReviewList(); });
@@ -1585,9 +1594,9 @@ function openReview(r) {
 function route() {
   const [p, sub] = location.hash.replace("#", "").split("/");
   state.page = PAGES[p] ? p : "dashboard";
-  if (state.page === "tasks" && ["week", "area", "person"].includes(sub)) state.taskTab = sub;
+  if (p === "tasks" && sub === "person") state.page = "personal";  // 예전 주소(개인별 업무 탭)
+  if (state.page === "tasks" && ["week", "area"].includes(sub)) state.taskTab = sub;
   if (state.page === "leave" && ["list", "cal"].includes(sub)) state.leaveTab = sub;
-  if (state.page === "reviews" && ["list", "dash"].includes(sub)) state.rvTab = sub;
   $("#sidebar").classList.remove("open");
   render();
 }

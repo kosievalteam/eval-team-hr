@@ -294,6 +294,7 @@ REVIEW_FIELDS = {
     "no": "협의번호", "kind": "구분", "agency": "부처", "name": "사업명", "type": "신청유형", "field": "신청분야",
     "assignee": "검토담당자", "state": "진행단계", "received": "접수일", "accepted": "접수완료일",
     "wait_days": "접수대기일수", "draft": "초안작성일", "draft_review": "검토본작성일", "reviewer": "검토본담당자",
+    "revised": "수정본작성일", "final": "최종작성일",
     "reviewed": "검토완료일", "result": "결과서수령일", "memo": "메모", "memo_date": "메모확인일", "collected": "수집시각",
 }
 
@@ -313,6 +314,43 @@ def parse_reviews(path):
     return {"file": Path(path).name, "collected": rows[0]["collected"] if rows else "", "rows": rows}
 
 
+# ---------------------------------------------------------------- 업무분장표
+
+def cell_text(v):
+    if v is None:
+        return ""
+    if isinstance(v, datetime):
+        return v.strftime("%Y-%m-%d") if not (v.hour or v.minute) else v.strftime("%Y-%m-%d %H:%M")
+    if isinstance(v, date):
+        return v.isoformat()
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return norm(v).replace("\r", "").strip()
+
+
+def parse_duty(path):
+    """업무분장 엑셀을 서식 없이 표 그대로(병합 셀 포함) 옮긴다. 빈 행·열은 끝에서 잘라낸다."""
+    wb = openpyxl.load_workbook(path, data_only=True)
+    sheets = []
+    for ws in wb.worksheets:
+        if ws.sheet_state != "visible":
+            continue
+        rows = [[cell_text(c) for c in r] for r in ws.iter_rows(values_only=True)]
+        while rows and not any(rows[-1]):
+            rows.pop()
+        width = max((max((i + 1 for i, c in enumerate(r) if c), default=0) for r in rows), default=0)
+        rows = [r[:width] + [""] * (width - len(r)) for r in rows]
+        # 맨 위 빈 행은 잘라내고 병합 범위의 행 번호도 맞춘다
+        top = next((i for i, r in enumerate(rows) if any(r)), 0)
+        rows = rows[top:]
+        merges = [[m.min_row - 1 - top, m.min_col - 1, m.max_row - 1 - top, m.max_col - 1]
+                  for m in ws.merged_cells.ranges if m.min_row - 1 >= top and m.min_col - 1 < width]
+        if rows:
+            sheets.append({"title": ws.title, "rows": rows, "merges": merges})
+    wb.close()
+    return sheets
+
+
 # ---------------------------------------------------------------- 집계
 
 def build_payload():
@@ -329,6 +367,10 @@ def build_payload():
         if err:
             errors.append(err)
     leave = leave or {"holidays": {}, "entries": []}
+    # 업무분장표는 보조 자료라 못 읽어도 배포를 막지 않는다(duty_error로 화면에만 알린다)
+    duty, duty_error = None, ""
+    if cfg.get("duty_file"):
+        duty, duty_error = cached(cfg["duty_file"], parse_duty)
 
     today = date.today().isoformat()
     # 팀원은 config.json 명단 기준. 명단에 없는 이름(전출자 등)의 휴가·업무는 화면에서 제외한다.
@@ -359,6 +401,8 @@ def build_payload():
         "holidays": leave["holidays"],
         "entries": entries,
         "reviews": reviews or {"file": "", "rows": []},
+        "duty": duty or [],
+        "duty_error": duty_error or "",
         "sources": {"leave": cfg["leave_file"], "reviews": cfg.get("review_file", "")},
         "errors": errors,
     }

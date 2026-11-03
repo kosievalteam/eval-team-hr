@@ -16,3 +16,6 @@ __pycache__/
 
 # 로고 원본 (웹에는 static/kosi_logo.png만 사용)
 워드마크.jpg
+
+# 자동 갱신 기록
+logs/
