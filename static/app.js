@@ -1062,7 +1062,7 @@ function openPcLog(r) {
 function renderLeave() {
   const el = $("#page-leave");
   const tabs = `<div class="tabs">
-    ${[["list", "근태등록"], ["cal", "근무 현황"]].map(([k, t]) =>
+    ${[["list", "근태 등록"], ["cal", "근무 현황"]].map(([k, t]) =>
       `<button data-tab="${k}" class="${state.leaveTab === k ? "active" : ""}">${t}</button>`).join("")}</div>`;
   const body = ({ list: leaveList, cal: leaveCalendar }[state.leaveTab] || leaveList)();
   el.innerHTML = tabs + body;
