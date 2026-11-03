@@ -1539,7 +1539,7 @@ function renderReviewList() {
       <input id="rvQ" placeholder="사업명·부처·메모로 찾기" value="${esc(f.q)}" style="margin-left:auto;min-width:220px">
     </div>
     <div class="toolbar">
-      <div class="seg wrap">${chip("rs", "_nofinal", `최종(팀장) 전 ${base.filter(noFinal).length}`)}${chip("rs", "_open", `진행 중 ${open.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}</div>
+      <div class="seg wrap">${chip("rs", "_open", `진행 중 ${open.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}${chip("rs", "_nofinal", `최종(팀장) 전 ${base.filter(noFinal).length}`)}</div>
       <span class="muted small" style="margin-left:auto">${list.length}건</span>
     </div>
     <div class="card"><div class="table-wrap rv-wrap"><table class="rvtable">
