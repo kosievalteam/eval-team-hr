@@ -61,7 +61,11 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 ## 계정·팀원 명단
 - 로그인 계정은 Supabase `kosievalteam's Project`의 Auth 계정입니다(`@kosi.re.kr`만 가입 가능).
 - `config.json`의 `members[].email`에 있는 계정만 HR앱에 들어올 수 있습니다. 명단을 바꾸면 `배포.bat`을 실행해야 반영됩니다.
-- 계정이 없는 팀원은 로그인 화면의 ‘가입하기’로 만듭니다.
+- 계정이 없는 팀원은 로그인 화면의 ‘가입하기’로 만듭니다. 비밀번호를 잊으면 ‘비밀번호를 잊었나요?’로 재설정 메일을 받습니다.
+- 이 Supabase 프로젝트는 여러 앱(biz_·chat_·dl_·gonggo_·hr_)이 로그인 계정을 함께 씁니다. 데이터는 표마다 RLS로 나뉩니다.
+  - **Site URL은 바꾸지 않습니다**(다른 앱의 메일 링크가 바뀜). HR앱은 메일을 보낼 때 자기 주소로 돌아오게 지정합니다.
+  - 대신 Authentication › URL Configuration › **Redirect URLs**에 HR앱 주소를 등록해야 합니다:
+    `https://evalteamhr.vercel.app/**`, `https://kosievalteam.github.io/eval-team-hr/**`
 
 ## 설정 (`config.json`)
 - `members[]`: `name`, `email`(로그인 계정), `admin`, `total`(2026년 부여 연차일수), `prior_used`(엑셀 기록 전 사용 일수)

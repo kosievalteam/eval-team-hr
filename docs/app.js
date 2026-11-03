@@ -77,6 +77,20 @@ const STATIC = !!window.HR_STATIC;
 const SUPABASE_URL = "https://ryrhtvaeutqejdekpari.supabase.co";
 const SUPABASE_KEY = "sb_publishable_DBRKg4svB4CBjiMptQTD2Q_ywYTTYIL";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// 이 Supabase 프로젝트는 여러 앱이 함께 쓴다. 가입 확인·비밀번호 재설정 메일이 다른 앱(Site URL)이 아니라
+// 지금 보고 있는 HR앱 주소로 돌아오게 지정한다(Supabase › Authentication › URL Configuration › Redirect URLs에 등록 필요).
+const APP_URL = location.origin + location.pathname;
+// 재설정 메일 링크로 들어오면 로그인된 상태가 되므로, 바로 새 비밀번호를 정하게 한다.
+let pendingPwReset = false;
+sb.auth.onAuthStateChange(ev => {
+  if (ev !== "PASSWORD_RECOVERY") return;
+  pendingPwReset = true;
+  if (state.user) askNewPassword();
+});
+function askNewPassword() {
+  pendingPwReset = false;
+  setTimeout(() => $("#userBox [data-act=pw]")?.click(), 0);
+}
 
 async function must(q) {
   const { data, error } = await q;
@@ -94,29 +108,36 @@ function loginGate(message) {
       gate.id = "pwGate";
       document.body.appendChild(gate);
     }
-    let mode = "login";
+    let mode = "login";  // login | signup | reset
     const draw = msg => {
+      const links = { login: [["signup", "계정이 없나요? 가입하기"], ["reset", "비밀번호를 잊었나요?"]],
+        signup: [["login", "로그인으로 돌아가기"]], reset: [["login", "로그인으로 돌아가기"]] }[mode];
       gate.innerHTML = `<form class="gate-box">
         <div class="brand-logo"><img src="kosi_logo.png" alt="KOSI" onerror="this.replaceWith('KOSI')"></div>
         <h2>정책평가팀 HR 관리</h2>
         ${mode === "signup" ? `<p class="muted small">처음 쓰는 경우 @kosi.re.kr 이메일로 가입하세요.</p>` : ""}
+        ${mode === "reset" ? `<p class="muted small">가입한 이메일로 비밀번호 재설정 링크를 보냅니다.</p>` : ""}
         <input type="email" name="email" placeholder="이메일 (@kosi.re.kr)" autocomplete="username" required>
-        <input type="password" name="pw" placeholder="비밀번호${mode === "signup" ? " (6자 이상)" : ""}" autocomplete="${mode === "login" ? "current-password" : "new-password"}" minlength="6" required>
+        ${mode === "reset" ? "" : `<input type="password" name="pw" placeholder="비밀번호${mode === "signup" ? " (6자 이상)" : ""}" autocomplete="${mode === "login" ? "current-password" : "new-password"}" minlength="6" required>`}
         <div class="gate-msg">${esc(msg || "")}</div>
-        <button class="btn-pri">${mode === "login" ? "로그인" : "가입하기"}</button>
-        <button type="button" class="link-btn" data-mode>${mode === "login" ? "계정이 없나요? 가입하기" : "로그인으로 돌아가기"}</button></form>`;
+        <button class="btn-pri">${{ login: "로그인", signup: "가입하기", reset: "재설정 메일 보내기" }[mode]}</button>
+        ${links.map(([m, t]) => `<button type="button" class="link-btn" data-mode="${m}">${t}</button>`).join("")}</form>`;
       gate.hidden = false;
       const f = $("form", gate);
       f.email.focus();
-      $("[data-mode]", gate).onclick = () => { mode = mode === "login" ? "signup" : "login"; draw(""); };
+      gate.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { mode = b.dataset.mode; draw(""); });
       f.onsubmit = async ev => {
         ev.preventDefault();
         const btn = $(".btn-pri", f);
         btn.disabled = true;
-        const email = f.email.value.trim().toLowerCase(), password = f.pw.value;
+        const email = f.email.value.trim().toLowerCase(), password = f.pw?.value;
         try {
-          if (mode === "signup") {
-            const { data, error } = await sb.auth.signUp({ email, password });
+          if (mode === "reset") {
+            const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: APP_URL });
+            if (error) throw error;
+            mode = "login"; draw("재설정 메일을 보냈습니다. 메일의 링크를 누르면 이 화면에서 새 비밀번호를 정할 수 있습니다."); return;
+          } else if (mode === "signup") {
+            const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: APP_URL } });
             if (error) throw error;
             if (!data.session) { mode = "login"; draw("가입 확인 메일을 보냈습니다. 메일의 링크를 누른 뒤 로그인하세요."); return; }
           } else {
@@ -285,6 +306,7 @@ async function load(manual) {
     if (!state.user) {
       state.user = await ensureUser();
       renderUser();
+      if (pendingPwReset) askNewPassword();
     }
     const [base, web] = await Promise.all([fetchBase(), fetchWeb()]);
     state.data = rebaseToday(merge(base, web));
