@@ -19,7 +19,7 @@ const state = {
   rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["age", -1] },
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "주간업무관리", reviews: "협의검토관리", leave: "휴가관리" };
+const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "주간업무관리", reviews: "협의검토관리", pclog: "공용 PC 사용대장", leave: "휴가관리" };
 const REVIEW_DASHBOARD = "https://kosievalteam.github.io/newbiz_dashboard/";
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -193,20 +193,29 @@ async function fetchBase() {
 }
 
 async function fetchWeb() {
-  const [notices, leave, weekly, tasks, review] = await Promise.all([
+  const [notices, slack, pclog, leave, weeks, weekly, tasks, review] = await Promise.all([
     must(sb.from("hr_notices").select("*")),
+    must(sb.from("hr_slack_notices").select("*")),
+    must(sb.from("hr_pc_log").select("*")),
     must(sb.from("hr_leave").select("*")),
+    must(sb.from("hr_weeks").select("*").order("sort", { ascending: false })),
     must(sb.from("hr_weekly").select("*").order("id")),
     must(sb.from("hr_tasks").select("*").order("id")),
     must(sb.from("hr_review").select("*")),
   ]);
-  return { notices, leave, weekly, tasks, review };
+  return { notices, slack, pclog, leave, weeks, weekly, tasks, review };
 }
 
 function merge(d, web) {
   const hpd = d.hours_per_day || 8;
   const names = new Set(d.members.map(m => m.name));
-  d.notices = web.notices;
+  // Slack 전체공지 채널 메시지(배포 때 동기화)는 읽기 전용으로 함께 보여준다. 첫 줄 = 제목.
+  d.notices = [...web.notices, ...web.slack.map(s => {
+    const [title, ...rest] = s.text.split("\n");
+    return { id: "slack-" + s.ts, slack: true, ts: s.ts, title: title.replace(/^\*(.*)\*$/, "$1"), body: rest.join("\n").trim(),
+      author: s.author, date: s.date, important: false, permalink: s.permalink, edited: s.edited, reply_count: s.reply_count };
+  })];
+  d.pclog = web.pclog;
 
   web.leave.filter(r => names.has(r.name)).forEach(r => {
     const c = classify(r.kind, hpd);
@@ -218,11 +227,17 @@ function merge(d, web) {
     });
   });
 
+  // 주간업무는 모두 웹(Supabase)에서 작성한다. hr_weeks.id = 주차 키(엑셀에서 가져온 주차는 시트명).
+  const week = r => ({ sheet: r.id, title: r.title, status: r.status, progress_label: r.progress_label,
+    plan_label: r.plan_label, start: r.start_date || "", end: r.end_date || "", created_by: r.created_by });
+  d.weeks = web.weeks.filter(r => r.kind === "plan").map(r => ({ ...week(r), items: [] }));
+  d.personal = web.weeks.filter(r => r.kind === "report").map(r => ({ ...week(r), tasks: [] }));
+
   const weekBySheet = Object.fromEntries(d.weeks.map(w => [w.sheet, w]));
   web.weekly.forEach(r => {
     const w = weekBySheet[r.sheet];
     if (w) w.items.push({ area: r.area, progress: r.progress, plan: r.plan, key: r.key, author: r.author,
-      written: r.updated_at.slice(5, 10).replace("-", "/"), reviewed: false, web: true, wid: r.id, created_by: r.created_by });
+      written: r.written || r.updated_at.slice(5, 10).replace("-", "/"), reviewed: r.reviewed, wid: r.id, created_by: r.created_by });
   });
 
   const pBySheet = Object.fromEntries(d.personal.map(w => [w.sheet, w]));
@@ -230,7 +245,7 @@ function merge(d, web) {
     const w = pBySheet[r.sheet];
     if (w) w.tasks.push({ owner: r.owner, name: r.name, content: r.content, priority: r.priority, status: r.status,
       start: r.start_date || "", due: r.due || "", done: r.done || "", result: r.result, memo: r.memo,
-      web: true, wid: r.id, created_by: r.created_by });
+      wid: r.id, created_by: r.created_by });
   });
 
   const ov = Object.fromEntries(web.review.map(r => [r.no, r]));
@@ -315,6 +330,7 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
     const v = data[f.name] ?? f.value ?? "";
     const req = f.required ? "required" : "";
     let input;
+    if (f.type === "note") return `<p class="small muted">${esc(f.help)}</p>`;
     if (f.type === "textarea") input = `<textarea name="${f.name}" rows="${f.rows || 4}" ${req} placeholder="${esc(f.placeholder || "")}">${esc(v)}</textarea>`;
     else if (f.type === "select") input = `<select name="${f.name}" ${req}>${f.options.map(o => {
       const [val, lbl] = Array.isArray(o) ? o : [o, o];
@@ -350,7 +366,7 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
     if (ev.submitter?.value !== "save") return;
     ev.preventDefault();
     const v = {};
-    fields.flat().forEach(f => {
+    fields.flat().filter(f => f.type !== "note").forEach(f => {
       const el = form.elements[f.name];
       v[f.name] = f.type === "checkbox" ? el.checked : el.value.trim();
     });
@@ -401,7 +417,7 @@ function render() {
   document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("active", a.dataset.page === state.page));
   Object.keys(PAGES).forEach(p => ($("#page-" + p).hidden = p !== state.page));
   $("#pageTitle").textContent = PAGES[state.page];
-  ({ dashboard: renderDashboard, notices: renderNotices, tasks: renderTasks, reviews: renderReviews, leave: renderLeave })[state.page]();
+  ({ dashboard: renderDashboard, notices: renderNotices, tasks: renderTasks, reviews: renderReviews, pclog: renderPcLog, leave: renderLeave })[state.page]();
 }
 
 /* ------------------------------------------------------------ dashboard */
@@ -485,16 +501,20 @@ function renderDashboard() {
 
 /* ------------------------------------------------------------ notices */
 function renderNotices() {
-  const list = [...state.data.notices].sort((a, b) => (b.important - a.important) || b.date.localeCompare(a.date));
+  const list = [...state.data.notices].sort((a, b) => (b.important - a.important) || b.date.localeCompare(a.date)
+    || String(b.ts || b.created_at || "").localeCompare(String(a.ts || a.created_at || "")));
+  const slackTag = n => n.slack ? pill("web", "Slack")
+    : n.slack_ts && n.slack_ts !== "before-slack" ? ` <span class="small muted">· Slack 게시됨</span>` : "";
   $("#page-notices").innerHTML = `
-    <div class="toolbar"><span class="muted">총 ${list.length}건</span>
+    <div class="toolbar"><span class="muted">총 ${list.length}건 · Slack 전체공지 채널과 배포 때 동기화</span>
       <button class="btn-pri" style="margin-left:auto" id="btnNewNotice">+ 공지 작성</button></div>
     <div class="card">
       ${list.length ? list.map(n => `
         <div class="notice-item">
-          <div class="t">${n.important ? pill("imp", "중요") : ""}${esc(n.title)}
-            ${canEdit(n) ? `<span class="acts"><button class="btn-sm" data-edit="${esc(n.id)}">수정</button></span>` : ""}</div>
-          <div class="m">${esc(n.date)}${n.author ? " · " + esc(n.author) : ""}</div>
+          <div class="t">${n.important ? pill("imp", "중요") : ""}${slackTag(n)} ${esc(n.title)}
+            ${!n.slack && canEdit(n) ? `<span class="acts"><button class="btn-sm" data-edit="${esc(n.id)}">수정</button></span>` : ""}
+            ${n.permalink ? `<span class="acts"><a class="link small" href="${esc(n.permalink)}" target="_blank" rel="noopener">Slack에서 보기 →</a></span>` : ""}</div>
+          <div class="m">${esc(n.date)}${n.author ? " · " + esc(n.author) : ""}${n.edited ? " · 수정됨" : ""}${n.reply_count ? ` · 댓글 ${n.reply_count}` : ""}</div>
           ${n.body ? `<div class="b">${esc(n.body)}</div>` : ""}
         </div>`).join("") : `<div class="empty">등록된 공지가 없습니다.</div>`}
     </div>`;
@@ -510,6 +530,7 @@ function openNotice(n) {
       { name: "body", label: "내용", type: "textarea", rows: 7 },
       [{ name: "author", label: "작성자" }, { name: "date", label: "게시일", type: "date", required: true }],
       { name: "important", label: "중요 공지", type: "checkbox" },
+      ...(n ? [] : [{ type: "note", help: "저장하면 다음 배포(평일 09·13·18시) 때 Slack 전체공지 채널에도 게시됩니다. 게시 후 수정·삭제는 Slack에 반영되지 않습니다." }]),
     ],
     onSave: v => n ? must(sb.from("hr_notices").update(v).eq("id", n.id)) : must(sb.from("hr_notices").insert(v)),
     onDelete: n && (() => must(sb.from("hr_notices").delete().eq("id", n.id))),
@@ -536,11 +557,78 @@ function formatTask(text, q) {
 }
 function areaKey(a) { return a.replace(/\s*및.*$/, "").replace(/조사$/, "").trim(); }
 
+/* 새 주차 기본값: 다음 월요일이 속한 주. 몇째 주인지는 그 주 목요일 기준(26년11월2주차). */
+function nextMonday(from) {
+  let x = from;
+  while (parseIso(x).getDay() !== 1) x = addDays(x, 1);
+  return x;
+}
+function weekName(monday) {
+  const t = parseIso(addDays(monday, 3));
+  return { y: t.getFullYear() % 100, m: t.getMonth() + 1, n: Math.ceil(t.getDate() / 7) };
+}
+const canEditWeek = w => !!state.user && (state.user.admin || (w.created_by || "").toLowerCase() === state.user.email);
+
+function openNewWeek(kind) {
+  const list = kind === "plan" ? state.data.weeks : state.data.personal;
+  const prev = list[0];
+  const mon = nextMonday(kind === "report" && prev?.end ? addDays(prev.end, 1) : state.data.today);
+  const { y, m, n } = weekName(mon);
+  const md = s => `${parseIso(s).getMonth() + 1}/${parseIso(s).getDate()}`;
+  const data = kind === "plan"
+    ? { title: `${y}년${m}월${n}주차`, status: "초안", copy: !!prev,
+        progress_label: prev ? prev.plan_label.replace(/^계획/, "진행") : "진행",
+        plan_label: `계획(${String(m).padStart(2, "0")}월 ${n}주차, ${md(mon)}~)` }
+    : { title: `${m}월 ${n}주차`, start: mon, end: addDays(mon, 4), copy: !!prev };
+  const copyHelp = kind === "plan" ? "업무영역·작성자를 가져오고, 지난주 ‘계획’을 이번 주 ‘진행’에 넣습니다."
+    : "완료·중단이 아닌 업무를 그대로 가져옵니다.";
+  openForm({
+    title: kind === "plan" ? "새 주차 만들기 · 주간업무계획" : "새 주차 만들기 · 개인별 업무",
+    data,
+    fields: [
+      { name: "title", label: "주차 이름", required: true },
+      ...(kind === "plan"
+        ? [{ name: "status", label: "상태", type: "select", options: ["초안", "최종"] },
+           [{ name: "progress_label", label: "왼쪽 열 제목" }, { name: "plan_label", label: "오른쪽 열 제목" }]]
+        : [[{ name: "start", label: "시작일", type: "date", required: true }, { name: "end", label: "종료일", type: "date", required: true }]]),
+      ...(prev ? [{ name: "copy", label: `‘${prev.title}’ 내용 이어받기 — ${copyHelp}`, type: "checkbox" }] : []),
+    ],
+    onSave: async v => {
+      await must(sb.rpc("hr_new_week", {
+        p_kind: kind, p_title: v.title, p_status: v.status || "", p_progress_label: v.progress_label || "",
+        p_plan_label: v.plan_label || "", p_start: nullIfEmpty(v.start), p_end: nullIfEmpty(v.end),
+        p_copy_from: v.copy ? prev.sheet : null,
+      }));
+      if (kind === "plan") state.weekIdx = 0; else state.pWeek = 0;
+    },
+  });
+}
+
+function openWeekSettings(kind, w) {
+  const empty = kind === "plan" ? !w.items.length : !w.tasks.length;
+  openForm({
+    title: `주차 설정 · ${w.title}`,
+    data: w,
+    fields: [
+      { name: "title", label: "주차 이름", required: true },
+      ...(kind === "plan"
+        ? [{ name: "status", label: "상태", type: "select", options: ["초안", "최종"] },
+           [{ name: "progress_label", label: "왼쪽 열 제목" }, { name: "plan_label", label: "오른쪽 열 제목" }]]
+        : [[{ name: "start", label: "시작일", type: "date" }, { name: "end", label: "종료일", type: "date" }]]),
+    ],
+    onSave: v => must(sb.from("hr_weeks").update(kind === "plan"
+      ? { title: v.title, status: v.status, progress_label: v.progress_label, plan_label: v.plan_label }
+      : { title: v.title, start_date: nullIfEmpty(v.start), end_date: nullIfEmpty(v.end) }).eq("id", w.sheet)),
+    // 업무가 남아 있는 주차는 지우지 않는다(내용 보존)
+    onDelete: empty && (() => must(sb.from("hr_weeks").delete().eq("id", w.sheet))),
+    deleteLabel: "빈 주차 삭제",
+  });
+}
+
 function renderTasks() {
   const weeks = state.data.weeks;
   const el = $("#page-tasks");
-  if (!weeks.length) { el.innerHTML = `<div class="card empty">주간업무계획 엑셀에서 시트를 찾지 못했습니다.</div>`; return; }
-  state.weekIdx = Math.min(state.weekIdx, weeks.length - 1);
+  state.weekIdx = Math.max(0, Math.min(state.weekIdx, weeks.length - 1));
   const q = state.taskQuery.trim();
 
   const tabs = `<div class="tabs">
@@ -552,6 +640,12 @@ function renderTasks() {
     el.innerHTML = tabs + personalView();
     el.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.taskTab = b.dataset.tab; renderTasks(); });
     bindPersonal(el);
+    return;
+  }
+  if (!weeks.length) {
+    el.innerHTML = tabs + `<div class="card empty">아직 주차가 없습니다. <button class="btn-pri" id="btnNewWeek">+ 새 주차</button></div>`;
+    el.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.taskTab = b.dataset.tab; renderTasks(); });
+    $("#btnNewWeek").onclick = () => openNewWeek("plan");
     return;
   }
 
@@ -567,7 +661,9 @@ function renderTasks() {
         <select id="weekSel">${weeks.map((x, i) => `<option value="${i}" ${i === state.weekIdx ? "selected" : ""}>${esc(x.title)}</option>`).join("")}</select>
         <button class="btn-sec" data-wk="-1" ${state.weekIdx === 0 ? "disabled" : ""}>다음 주 ▶</button>
         ${w.status ? pill("s-" + w.status, w.status) : ""}
+        ${canEditWeek(w) ? `<button class="btn-sm" id="btnWeekSet">주차 설정</button>` : ""}
         <input id="taskQ" placeholder="검색 (업무·키워드·작성자)" value="${esc(state.taskQuery)}" style="margin-left:auto;min-width:220px">
+        <button class="btn-sec" id="btnNewWeek">+ 새 주차</button>
         <button class="btn-pri" id="btnNewWeekly">+ 업무 추가</button>
       </div>
       <div class="stats" style="margin-bottom:16px">
@@ -579,10 +675,10 @@ function renderTasks() {
       ${items.length ? items.map(it => `
         <div class="card task-card">
           <div class="task-head">
-            <h3>${esc(it.area)}</h3>${webTag(it)}
+            <h3>${esc(it.area)}</h3>
             ${it.reviewed ? pill("s-최종", "팀장 검토 ✓") : pill("s-완료", "검토 전")}
             <span class="who">${it.author ? `작성 ${esc(it.author)}${it.written ? " · " + esc(it.written) : ""}` : "미작성"}</span>
-            ${it.web && canEdit(it) ? `<button class="btn-sm" data-wedit="${it.wid}">수정</button>` : ""}
+            <button class="btn-sm" data-wedit="${it.wid}">수정</button>
           </div>
           <div class="task-cols">
             <div class="task-col"><h4>${esc(w.progress_label)}</h4><div class="txt">${formatTask(it.progress, q)}</div></div>
@@ -615,6 +711,8 @@ function renderTasks() {
   el.querySelectorAll("[data-wk]").forEach(b => b.onclick = () => { state.weekIdx += Number(b.dataset.wk); renderTasks(); });
   const ws = $("#weekSel"); if (ws) ws.onchange = () => { state.weekIdx = Number(ws.value); renderTasks(); };
   const nw = $("#btnNewWeekly"); if (nw) nw.onclick = () => openWeekly(weeks[state.weekIdx], null);
+  const nk = $("#btnNewWeek"); if (nk) nk.onclick = () => openNewWeek("plan");
+  const wsb = $("#btnWeekSet"); if (wsb) wsb.onclick = () => openWeekSettings("plan", weeks[state.weekIdx]);
   el.querySelectorAll("[data-wedit]").forEach(b => b.onclick = () => {
     const w = weeks[state.weekIdx];
     openWeekly(w, w.items.find(i => i.wid === Number(b.dataset.wedit)));
@@ -629,20 +727,29 @@ function renderTasks() {
   };
 }
 
+// 주간업무계획은 팀 공동 문서라 팀원 누구나 고칠 수 있다. 삭제는 작성자·관리자, 팀장 검토 표시는 관리자만.
 function openWeekly(w, it) {
+  const members = state.data.members.map(m => m.name);
+  const authors = [...new Set([...members, it?.author].filter(Boolean))];
   openForm({
     title: `${it ? "업무 수정" : "업무 추가"} · ${w.title}`,
     data: it || { author: state.user.name },
     fields: [
       { name: "area", label: "업무영역", required: true, list: [...new Set(w.items.map(i => i.area))] },
-      { name: "progress", label: w.progress_label, type: "textarea", rows: 5, help: "줄 앞에 - 또는 ○를 쓰면 항목, *는 세부항목으로 표시됩니다." },
-      { name: "plan", label: w.plan_label, type: "textarea", rows: 5 },
+      { name: "progress", label: w.progress_label, type: "textarea", rows: 6, help: "줄 앞에 - 또는 ○를 쓰면 항목, *는 세부항목으로 표시됩니다." },
+      { name: "plan", label: w.plan_label, type: "textarea", rows: 6 },
       { name: "key", label: "핵심 업무 계획 (선택)", type: "textarea", rows: 2 },
-      whoField("author", "작성자", it?.author),
+      { name: "author", label: "작성자", type: "select", options: ["", ...authors].map(a => [a, a || "(미작성)"]) },
+      ...(state.user.admin ? [{ name: "reviewed", label: "팀장 검토 완료", type: "checkbox" }] : []),
     ],
-    onSave: v => it ? must(sb.from("hr_weekly").update(v).eq("id", it.wid))
-      : must(sb.from("hr_weekly").insert({ ...v, sheet: w.sheet })),
-    onDelete: it && (() => must(sb.from("hr_weekly").delete().eq("id", it.wid))),
+    onSave: v => {
+      const row = { area: v.area, progress: v.progress, plan: v.plan, key: v.key, author: v.author,
+        written: state.data.today.slice(5).replace("-", "/") };
+      if (state.user.admin) row.reviewed = v.reviewed;
+      return it ? must(sb.from("hr_weekly").update(row).eq("id", it.wid))
+        : must(sb.from("hr_weekly").insert({ ...row, sheet: w.sheet }));
+    },
+    onDelete: it && canEdit(it) && (() => must(sb.from("hr_weekly").delete().eq("id", it.wid))),
   });
 }
 
@@ -650,7 +757,8 @@ function openWeekly(w, it) {
 const P_STATUS = ["진행 중", "시작 전", "완료", "중단"];
 const P_STATUS_CLS = { "진행 중": "ps-run", "시작 전": "ps-wait", "완료": "ps-done", "중단": "ps-stop" };
 
-function pWeeks() { return state.data.personal.filter(w => w.tasks.length); }
+// 엑셀에서 가져온 빈 양식 시트는 숨기고, 웹에서 만든 주차는 비어 있어도 보인다.
+function pWeeks() { return state.data.personal.filter(w => w.tasks.length || w.created_by); }
 function isOverdue(t) { return t.due && t.due < state.data.today && !["완료", "중단"].includes(t.status); }
 function ownerOrder(names) {
   const order = state.data.members.map(m => m.name);
@@ -663,7 +771,7 @@ function weekLabel(w) {
 
 function personalView() {
   const weeks = pWeeks();
-  if (!weeks.length) return `<div class="card empty">주간업무보고 엑셀(config.json의 personal_file)에서 업무를 찾지 못했습니다.</div>`;
+  if (!weeks.length) return `<div class="card empty">아직 주차가 없습니다. <button class="btn-pri" id="btnNewPWeek">+ 새 주차</button></div>`;
   const allWeeks = state.pWeek === "all";
   if (!allWeeks) state.pWeek = Math.min(state.pWeek, weeks.length - 1);
   const scope = allWeeks ? weeks : [weeks[state.pWeek]];
@@ -692,7 +800,7 @@ function personalView() {
         ${showWeek ? `<td class="small nowrap">${esc(t.week.title)}</td>` : ""}
         ${showOwner ? `<td><b>${esc(t.owner)}</b></td>` : ""}
         <td>${stars(t.priority)}</td>
-        <td><div class="pt-name">${hl(t.name || "(업무명 없음)")}${webTag(t)}${t.web && canEdit(t) ? ` <button class="btn-sm" data-tedit="${t.wid}">수정</button>` : ""}</div>${t.content ? `<div class="pt-desc">${hl(t.content)}</div>` : ""}</td>
+        <td><div class="pt-name">${hl(t.name || "(업무명 없음)")}${canEdit(t) ? ` <button class="btn-sm" data-tedit="${t.wid}">수정</button>` : ""}</div>${t.content ? `<div class="pt-desc">${hl(t.content)}</div>` : ""}</td>
         <td class="nowrap">${pill(P_STATUS_CLS[t.status] || "t-기타", t.status)}${isOverdue(t) ? " " + pill("imp", "기한초과") : ""}</td>
         <td class="small nowrap">${t.start || t.due ? `${t.start ? fmtDate(t.start) : ""} ~ ${t.due ? fmtDate(t.due) : ""}` : "-"}</td>
         <td class="small nowrap">${t.done ? fmtDate(t.done) : "-"}</td>
@@ -729,7 +837,9 @@ function personalView() {
       </select>
       <button class="btn-sec" data-pw="-1" ${allWeeks || state.pWeek === 0 ? "disabled" : ""}>다음 주 ▶</button>
       <div class="seg">${["", ...P_STATUS].map(s => `<button data-ps="${s}" class="${state.pStatus === s ? "on" : ""}">${s || "전체"}</button>`).join("")}</div>
+      ${!allWeeks && canEditWeek(weeks[state.pWeek]) ? `<button class="btn-sm" id="btnPWeekSet">주차 설정</button>` : ""}
       <input id="taskQ" placeholder="검색 (업무명·내용·결과)" value="${esc(state.taskQuery)}" style="margin-left:auto;min-width:220px">
+      <button class="btn-sec" id="btnNewPWeek">+ 새 주차</button>
       <button class="btn-pri" id="btnNewTask" title="${esc(weekLabel(allWeeks ? weeks[0] : weeks[state.pWeek]))} 주차에 추가">+ 업무 추가</button>
     </div>
     <div class="owner-chips">
@@ -743,10 +853,13 @@ function personalView() {
       <div class="card stat"><div class="dot c-red">!</div><div><div class="num">${base.filter(isOverdue).length}</div><div class="lbl">기한초과 (완료예정일 경과)</div></div></div>
     </div>
     ${main}
-    <p class="small muted">※ 원본: [내부용]정책평가팀 주간업무보고.xlsx · 시트 내 업무가 없는 양식 시트는 목록에서 제외됩니다.</p>`;
+    <p class="small muted">※ 본인 업무는 ‘수정’으로 고칠 수 있습니다(관리자는 모든 업무). 새 주차를 만들면 이전 주의 진행 중인 업무를 이어받을 수 있습니다.</p>`;
 }
 
 function bindPersonal(el) {
+  $("#btnNewPWeek").onclick = () => openNewWeek("report");
+  if (!pWeeks().length) return;
+  const pws = $("#btnPWeekSet"); if (pws) pws.onclick = () => openWeekSettings("report", pWeeks()[state.pWeek]);
   el.querySelectorAll("[data-pw]").forEach(b => b.onclick = () => { state.pWeek += Number(b.dataset.pw); renderTasks(); });
   const ws = $("#pWeekSel");
   ws.onchange = () => { state.pWeek = ws.value === "all" ? "all" : Number(ws.value); renderTasks(); };
@@ -788,6 +901,82 @@ function openTask(w, t) {
       return t ? must(sb.from("hr_tasks").update(row).eq("id", t.wid)) : must(sb.from("hr_tasks").insert({ ...row, sheet: w.sheet }));
     },
     onDelete: t && (() => must(sb.from("hr_tasks").delete().eq("id", t.wid))),
+  });
+}
+
+/* ------------------------------------------------------------ 공용 PC 사용대장 */
+// 일시는 timestamptz로 저장하고, 화면에서는 보는 사람 PC 시간대(한국)로 보여준다.
+function localDT(ts) {
+  const d = new Date(ts), z = n => String(n).padStart(2, "0");
+  return `${iso(d)}T${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+function fmtDT(ts, sameDayAs) {
+  if (!ts) return "";
+  const [day, hm] = localDT(ts).split("T");
+  return sameDayAs && localDT(sameDayAs).startsWith(day) ? hm : `${fmtDate(day)} ${hm}`;
+}
+function pcDuration(r) {
+  const min = Math.round((new Date(r.end_at) - new Date(r.start_at)) / 60000);
+  return min < 60 ? `${min}분` : `${Math.floor(min / 60)}시간${min % 60 ? ` ${min % 60}분` : ""}`;
+}
+
+function renderPcLog() {
+  const all = [...state.data.pclog].sort((a, b) => b.start_at.localeCompare(a.start_at));
+  const months = [...new Set(all.map(r => localDT(r.start_at).slice(0, 7)))];
+  state.pcMonth ??= state.data.today.slice(0, 7);
+  const list = all.filter(r => !state.pcMonth || localDT(r.start_at).startsWith(state.pcMonth));
+  const inUse = all.filter(r => !r.end_at);
+  $("#page-pclog").innerHTML = `
+    <div class="toolbar">
+      <select id="pcMonth"><option value="">전체 기간</option>
+        ${[...new Set([state.data.today.slice(0, 7), ...months])].sort().reverse().map(m =>
+          `<option value="${m}" ${m === state.pcMonth ? "selected" : ""}>${m.replace("-", "년 ")}월</option>`).join("")}</select>
+      <span class="muted">${list.length}건</span>
+      ${inUse.length ? `<span class="small">${pill("ps-run", "사용 중")} ${inUse.map(r => esc(r.user_name)).join(", ")}</span>` : ""}
+      <button class="btn-pri" style="margin-left:auto" id="btnNewPc">+ 사용 기록</button>
+    </div>
+    <div class="card"><div class="table-wrap"><table>
+      <thead><tr><th>사용시작</th><th>사용종료</th><th>사용시간</th><th>사용자</th><th style="width:40%">사용용도</th><th></th></tr></thead>
+      <tbody>${list.length ? list.map(r => `<tr>
+        <td class="nowrap">${fmtDT(r.start_at)}</td>
+        <td class="nowrap">${r.end_at ? fmtDT(r.end_at, r.start_at) : pill("ps-run", "사용 중")}</td>
+        <td class="nowrap small">${r.end_at ? pcDuration(r) : "-"}</td>
+        <td><b>${esc(r.user_name)}</b></td>
+        <td>${esc(r.purpose)}</td>
+        <td class="nowrap">${canEdit(r) ? `${r.end_at ? "" : `<button class="btn-sm" data-pcend="${r.id}">사용 종료</button> `}<button class="btn-sm" data-pcedit="${r.id}">수정</button>` : ""}</td>
+      </tr>`).join("") : `<tr><td colspan="6" class="empty">기록이 없습니다.</td></tr>`}</tbody>
+    </table></div></div>`;
+  $("#pcMonth").onchange = ev => { state.pcMonth = ev.target.value; renderPcLog(); };
+  $("#btnNewPc").onclick = () => openPcLog(null);
+  $("#page-pclog").querySelectorAll("[data-pcedit]").forEach(b => b.onclick = () =>
+    openPcLog(state.data.pclog.find(r => r.id === Number(b.dataset.pcedit))));
+  $("#page-pclog").querySelectorAll("[data-pcend]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try {
+      await must(sb.from("hr_pc_log").update({ end_at: new Date().toISOString() }).eq("id", Number(b.dataset.pcend)));
+      await load();
+    } catch (err) { alert(err.message || err); b.disabled = false; }
+  });
+}
+function openPcLog(r) {
+  openForm({
+    title: r ? "공용 PC 사용 기록 수정" : "공용 PC 사용 기록",
+    data: r ? { ...r, start_at: localDT(r.start_at), end_at: r.end_at ? localDT(r.end_at) : "" }
+      : { start_at: localDT(new Date()) },
+    fields: [
+      whoField("user_name", "사용자", r?.user_name),
+      [{ name: "start_at", label: "사용시작 일시", type: "datetime-local", required: true },
+       { name: "end_at", label: "사용종료 일시", type: "datetime-local", help: "사용 중이면 비워 두고, 끝나면 목록의 ‘사용 종료’를 누르세요." }],
+      { name: "purpose", label: "사용용도", required: true, placeholder: "예: 사전협의 자료 다운로드, 배포 실행" },
+    ],
+    onSave: v => {
+      // datetime-local 값은 시간대가 없으므로 이 PC 시간대 기준으로 변환해 저장한다
+      const row = { user_name: v.user_name, purpose: v.purpose, start_at: new Date(v.start_at).toISOString(),
+        end_at: v.end_at ? new Date(v.end_at).toISOString() : null };
+      if (row.end_at && row.end_at < row.start_at) throw new Error("사용종료 일시가 사용시작보다 빠릅니다.");
+      return r ? must(sb.from("hr_pc_log").update(row).eq("id", r.id)) : must(sb.from("hr_pc_log").insert(row));
+    },
+    onDelete: r && (() => must(sb.from("hr_pc_log").delete().eq("id", r.id))),
   });
 }
 

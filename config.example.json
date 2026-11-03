@@ -19,5 +19,7 @@
   ],
   "supabase_url": "https://ryrhtvaeutqejdekpari.supabase.co",
   "supabase_key": "sb_publishable_DBRKg4svB4CBjiMptQTD2Q_ywYTTYIL",
-  "review_file": "D:\\dev_eval_team\\사전협의\\다운로드\\dashboard_data\\dash_cases_2026.csv"
+  "review_file": "D:\\dev_eval_team\\사전협의\\다운로드\\dashboard_data\\dash_cases_2026.csv",
+  "slack_url": "https://w1775226894-cjo532123.slack.com",
+  "slack_channel": "C0C5JMQN57B"
 }

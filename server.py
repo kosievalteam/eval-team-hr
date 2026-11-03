@@ -1,7 +1,8 @@
 """정책평가팀 HR관리앱 로컬 서버.
 
-엑셀(연차 일정, 주간업무계획)과 사전협의 협의건 일정표(CSV)를 요청 시마다 읽어 JSON으로 제공하고 static/ 화면을 서빙한다.
-파일 수정시각이 바뀌지 않으면 캐시를 재사용한다. 공지·웹 입력은 화면에서 Supabase로 직접 읽고 쓴다.
+엑셀(연차 일정)과 사전협의 협의건 일정표(CSV)를 요청 시마다 읽어 JSON으로 제공하고 static/ 화면을 서빙한다.
+파일 수정시각이 바뀌지 않으면 캐시를 재사용한다. 공지·주간업무·웹 입력은 화면에서 Supabase로 직접 읽고 쓴다.
+parse_weekly·parse_personal은 주간업무 엑셀을 웹으로 옮기는 import_weekly.py에서만 쓴다.
 """
 import csv
 import json
@@ -321,14 +322,7 @@ def build_payload():
     leave, err = cached(cfg["leave_file"], lambda p: parse_leave(p, cfg.get("leave_sheet", "연차입력"), hpd))
     if err:
         errors.append(err)
-    weekly, err = cached(cfg["weekly_file"], parse_weekly)
-    if err:
-        errors.append(err)
-    personal = None
-    if cfg.get("personal_file"):
-        personal, err = cached(cfg["personal_file"], parse_personal)
-        if err:
-            errors.append(err)
+    # 주간업무계획·개인별 업무는 웹(Supabase)에서 작성한다. 엑셀은 import_weekly.py가 한 번만 읽는다.
     reviews = None
     if cfg.get("review_file"):
         reviews, err = cached(cfg["review_file"], parse_reviews)
@@ -340,7 +334,6 @@ def build_payload():
     # 팀원은 config.json 명단 기준. 명단에 없는 이름(전출자 등)의 휴가·업무는 화면에서 제외한다.
     members = {m["name"]: {k: v for k, v in m.items() if k not in ("email", "admin")} for m in cfg.get("members", [])}
     entries = [e for e in leave["entries"] if e["name"] in members]
-    personal = [dict(w, tasks=[t for t in w["tasks"] if t["owner"] in members]) for w in (personal or [])]
     for m in members.values():
         used = planned = 0.0
         for e in entries:
@@ -365,11 +358,8 @@ def build_payload():
         "members": list(members.values()),
         "holidays": leave["holidays"],
         "entries": entries,
-        "weeks": weekly or [],
-        "personal": personal,
         "reviews": reviews or {"file": "", "rows": []},
-        "sources": {"leave": cfg["leave_file"], "weekly": cfg["weekly_file"], "personal": cfg.get("personal_file", ""),
-                    "reviews": cfg.get("review_file", "")},
+        "sources": {"leave": cfg["leave_file"], "reviews": cfg.get("review_file", "")},
         "errors": errors,
     }
 
