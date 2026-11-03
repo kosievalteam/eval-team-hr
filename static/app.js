@@ -367,6 +367,12 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
       const [val, lbl] = Array.isArray(o) ? o : [o, o];
       return `<option value="${esc(val)}" ${String(val) === String(v) ? "selected" : ""}>${esc(lbl)}</option>`;
     }).join("")}</select>`;
+    // checks: 여러 개를 고르는 체크박스 묶음. 값은 "가, 나"처럼 쉼표로 이은 글자
+    else if (f.type === "checks") {
+      const on = new Set(splitNames(v));
+      return `<div class="chk-group"><span>${esc(f.label)}</span><div class="chk-list">${f.options.map(o =>
+        `<label class="chk-pill"><input type="checkbox" name="${f.name}" value="${esc(o)}" ${on.has(o) ? "checked" : ""}>${esc(o)}</label>`).join("")}</div></div>`;
+    }
     else if (f.type === "checkbox") return `<label class="chk"><input type="checkbox" name="${f.name}" ${v ? "checked" : ""}> ${esc(f.label)}</label>`;
     else input = `<input name="${f.name}" type="${f.type || "text"}" value="${esc(v)}" ${req} placeholder="${esc(f.placeholder || "")}" ${f.list ? `list="dl-${f.name}"` : ""}>`
       + (f.list ? `<datalist id="dl-${f.name}">${f.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>` : "");
@@ -398,6 +404,10 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
     ev.preventDefault();
     const v = {};
     fields.flat().filter(f => f.type !== "note").forEach(f => {
+      if (f.type === "checks") {
+        v[f.name] = [...form.querySelectorAll(`input[name="${f.name}"]:checked`)].map(x => x.value).join(", ");
+        return;
+      }
       const el = form.elements[f.name];
       v[f.name] = f.type === "checkbox" ? el.checked : el.value.trim();
     });
@@ -413,6 +423,7 @@ function whoField(name, label, cur) {
 }
 function webTag(x) { return x.web ? ` <span class="pill web" title="웹 입력${x.created_by ? " · " + esc(x.created_by) : ""}">웹</span>` : ""; }
 const nullIfEmpty = v => v || null;
+const splitNames = s => String(s || "").split(/\s*[,·/]\s*/).map(x => x.trim()).filter(Boolean);
 
 /* ------------------------------------------------------------ status per day */
 function dayStatus(day) {
@@ -1003,7 +1014,8 @@ async function downloadHwpx(build, w, btn) {
 // 주간업무계획은 팀 공동 문서라 팀원 누구나 고칠 수 있다. 삭제는 작성자·관리자, 팀장 검토 표시는 관리자만.
 function openWeekly(w, it) {
   const members = state.data.members.map(m => m.name);
-  const authors = [...new Set([...members, it?.author].filter(Boolean))];
+  // 작성자는 여러 명 가능: "정윤정, 박해연"처럼 쉼표로 이어 한 칸에 저장한다
+  const authors = [...new Set([...members, ...splitNames(it?.author)])];
   const withStats = isReviewArea(it?.area);
   const sf = REVIEW_STATS.map(([k, l]) => ({ name: "st_" + k, label: l, type: "number" }));
   openForm({
@@ -1015,7 +1027,7 @@ function openWeekly(w, it) {
       { name: "plan", label: w.plan_label, type: "textarea", rows: 6 },
       { name: "key", label: "핵심 업무 계획 (선택)", type: "textarea", rows: 2 },
       ...(withStats ? [{ type: "note", help: "<사전협의 진행현황> 광역지자체 건수 (합계는 자동 계산)" }, [sf[0], sf[1]], [sf[2], sf[3]], sf[4]] : []),
-      { name: "author", label: "작성자", type: "select", options: ["", ...authors].map(a => [a, a || "(미작성)"]) },
+      { name: "author", label: "작성자 (여러 명 선택 가능)", type: "checks", options: authors },
       ...(state.user.admin && w.status === "최종" ? [{ name: "reviewed", label: "팀장 검토 완료", type: "checkbox" }] : []),
     ],
     onSave: async v => {

@@ -466,3 +466,15 @@ tbody tr:hover > td { background: #f8faff; }
 .table-wrap > table:not(.duty-table) tbody tr:hover > td { background: #eef4ff; }
 .rvtable th { padding: 0 !important; }
 .th-sort { padding: 10px 12px; font-weight: 800; }
+/* 입력창: 여러 명 고르기(작성자 등) */
+.chk-group { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.chk-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.dlg label.chk-pill { flex-direction: row; align-items: center; gap: 6px; padding: 5px 12px 5px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--text); cursor: pointer; background: #fff; }
+.dlg label.chk-pill:has(input:checked) { border-color: var(--pri); background: var(--pri-soft); color: var(--pri); font-weight: 700; }
+.chk-pill input { margin: 0; }
+/* 달력·업무분장 표 선: 다른 표와 같은 진하기로 */
+.cal { border-color: #cfd6e0; }
+.cal .dow { border-bottom-color: #d3dae5; }
+.cal .day { border-right-color: #dfe4eb; border-bottom-color: #dfe4eb; }
+.duty-card { border-color: #cfd6e0; }
+.duty-table th, .duty-table td { border-bottom-color: #dfe4eb; border-right-color: #dfe4eb; }
