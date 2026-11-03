@@ -209,6 +209,8 @@ function businessDays(start, end, holidays) {
   return out;
 }
 
+// 엑셀 근태 줄의 열쇠: 이름|시작일|종료일|구분(원문). 엑셀 행번호는 줄을 끼워 넣으면 바뀌므로 내용으로 찾는다.
+const leaveKey = e => [e.name, e.start, e.end, e.label].join("|");
 // 웹 입력 항목의 id는 엑셀 행번호와 겹치지 않게 1,000,000을 더한다(정렬용).
 const WEB_ID = 1e6;
 
@@ -246,11 +248,14 @@ function merge(d, web) {
   d.pclog = web.pclog;
   d.duty = web.duty[0] || null;
 
-  web.leave.filter(r => names.has(r.name)).forEach(r => {
+  // 엑셀 근태를 웹에서 고치면 웹 기록(replaces = 엑셀 줄 열쇠)이 그 줄을 대신한다. hidden = 삭제 표시.
+  const replaced = new Set(web.leave.map(r => r.replaces).filter(Boolean));
+  d.entries = d.entries.filter(e => !replaced.has(leaveKey(e)));
+  web.leave.filter(r => names.has(r.name) && !r.hidden).forEach(r => {
     const c = classify(r.kind, hpd);
     const dates = businessDays(r.start_date, r.end_date, d.holidays);
     d.entries.push({
-      id: WEB_ID + r.id, wid: r.id, web: true, created_by: r.created_by, kind: r.kind,
+      id: WEB_ID + r.id, wid: r.id, web: true, created_by: r.created_by, kind: r.kind, replaces: r.replaces || null,
       name: r.name, start: r.start_date, end: r.end_date, category: c.category, label: c.label, trip: c.trip,
       note: r.note, workdays: dates.length, deduct: Math.round(c.perDay * dates.length * 10000) / 10000, dates,
     });
@@ -451,8 +456,6 @@ function render() {
   document.title = `${d.team_name} HR`;
   $("#todayLabel").textContent = fmtLong(d.today);
   $("#syncInfo").textContent = `${STATIC ? "웹 데이터 기준" : "엑셀 동기화"} ${d.generated.slice(5, 16)}`;
-  const upcoming = d.entries.filter(e => e.start > d.today && e.start <= addDays(d.today, 7)).length;
-  $("#navLeave").textContent = upcoming || "";
   const fresh = d.notices.filter(n => n.date >= addDays(d.today, -7)).length;
   $("#navNotice").textContent = fresh || "";
 
@@ -1363,7 +1366,7 @@ function leaveList() {
         <td class="num">${e.deduct ? fmtDays(e.deduct) : "-"}</td>
         <td class="small">${esc(e.label)}</td>
         <td class="small muted">${esc(e.note)}</td>
-        <td>${e.web && canEdit(e) ? `<button class="btn-sm" data-ledit="${e.wid}">수정</button>` : ""}</td>
+        <td>${canEditLeave(e) ? `<button class="btn-sm" data-ledit="${e.id}">수정</button>` : ""}</td>
       </tr>`).join("") || `<tr><td colspan="9" class="empty">조건에 맞는 내역이 없습니다.</td></tr>`}</tbody>
     </table></div></div>`;
 }
@@ -1420,17 +1423,31 @@ function bindLeave(el) {
   el.querySelectorAll("[data-period]").forEach(b => b.onclick = () => { f.period = b.dataset.period; renderLeave(); });
   bindCalendar(el, renderLeave);
   const nl = $("#btnNewLeave"); if (nl) nl.onclick = () => openLeave(null);
-  el.querySelectorAll("[data-ledit]").forEach(b => b.onclick = () => openLeave(state.data.entries.find(e => e.wid === Number(b.dataset.ledit))));
+  el.querySelectorAll("[data-ledit]").forEach(b => b.onclick = () => openLeave(state.data.entries.find(e => e.id === Number(b.dataset.ledit))));
 }
 
 const LEAVE_KINDS = ["연차", "오전반차", "오후반차", "시간단위휴가", "공가", "출장", "대외활동"];
+// 웹 근태는 작성자·관리자, 엑셀 근태는 본인·관리자가 고칠 수 있다(DB 규칙: 본인 이름이나 관리자만 입력).
+function canEditLeave(e) {
+  return e.web ? canEdit(e) : !!state.user && (state.user.admin || e.name === state.user.name);
+}
+// replaces 칸이 아직 DB에 없으면(supabase/2026-11-04_leave_override.sql 미적용) 알아보기 쉬운 말로 바꾼다
+async function leaveWrite(q) {
+  try { return await must(q); } catch (err) {
+    if (/replaces|hidden/.test(err.message)) throw new Error("엑셀 근태를 웹에서 고치는 기능이 아직 DB에 준비되지 않았습니다. 관리자에게 알려 주세요. (supabase/2026-11-04_leave_override.sql)");
+    throw err;
+  }
+}
 function openLeave(e) {
-  // '시간단위휴가(10:00~14:00)' → 구분 + 괄호 안 내용
-  const m = (e?.kind || "").match(/^([^(]+?)\s*(?:\((.*)\))?$/) || [];
+  const fromExcel = e && !e.web;
+  // '시간단위휴가(10:00~14:00)' → 구분 + 괄호 안 내용 (엑셀 근태는 구분 원문 = label)
+  // 여러 구분이 쉼표로 붙은 원문('시간단위휴가(..), 대외활동(..)')은 나누지 않고 그대로 '시간·사유' 칸에 둔다
+  const raw = (fromExcel ? e.label : e?.kind) || "";
+  const m = raw.includes(",") ? [] : raw.match(/^([^(]+?)\s*(?:\((.*)\))?$/) || [];
   const kind = LEAVE_KINDS.includes(m[1]) ? m[1] : (e ? "" : "연차");
   openForm({
-    title: e ? "근태 수정" : "근태 등록",
-    data: e ? { name: e.name, start: e.start, end: e.end, kind, detail: kind ? m[2] || "" : e.kind, note: e.note }
+    title: e ? `근태 수정${fromExcel ? " (엑셀 기록)" : ""}` : "근태 등록",
+    data: e ? { name: e.name, start: e.start, end: e.end, kind, detail: kind ? m[2] || "" : raw, note: e.note }
       : { start: state.data.today, end: state.data.today, kind },
     fields: [
       whoField("name", "이름", e?.name),
@@ -1438,15 +1455,21 @@ function openLeave(e) {
       [{ name: "kind", label: "구분", type: "select", options: kind || !e ? LEAVE_KINDS : ["", ...LEAVE_KINDS] },
        { name: "detail", label: "시간·사유 (괄호 안)", placeholder: "예: 10:00~14:00, 건강검진" }],
       { name: "note", label: "비고" },
+      ...(fromExcel ? [{ type: "note", help: "엑셀에서 온 기록입니다. 저장하거나 삭제하면 엑셀 파일은 그대로 두고 웹 기록이 이 줄을 대신합니다." }] : []),
     ],
     onSave: v => {
       if (v.end < v.start) throw new Error("종료일이 시작일보다 빠릅니다.");
       if (v.kind === "시간단위휴가" && !TIME_RE.test(v.detail)) throw new Error("시간단위휴가는 시간을 10:00~14:00 형식으로 입력하세요.");
       const row = { name: v.name, start_date: v.start, end_date: v.end, kind: v.kind ? v.kind + (v.detail ? `(${v.detail})` : "") : v.detail, note: v.note };
       if (!row.kind) throw new Error("구분을 선택하세요.");
+      if (fromExcel) return leaveWrite(sb.from("hr_leave").insert({ ...row, replaces: leaveKey(e) }));
       return e ? must(sb.from("hr_leave").update(row).eq("id", e.wid)) : must(sb.from("hr_leave").insert(row));
     },
-    onDelete: e && (() => must(sb.from("hr_leave").delete().eq("id", e.wid))),
+    // 엑셀 근태 삭제 = 숨김 기록 추가. 엑셀 줄을 대신하던 웹 기록은 지우지 않고 숨긴다(지우면 엑셀 줄이 다시 보이므로).
+    onDelete: e && (() => fromExcel
+      ? leaveWrite(sb.from("hr_leave").insert({ name: e.name, start_date: e.start, end_date: e.end, kind: e.label, note: e.note, replaces: leaveKey(e), hidden: true }))
+      : e.replaces ? leaveWrite(sb.from("hr_leave").update({ hidden: true }).eq("id", e.wid))
+      : must(sb.from("hr_leave").delete().eq("id", e.wid))),
   });
 }
 

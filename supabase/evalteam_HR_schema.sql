@@ -36,6 +36,8 @@ create table public.hr_leave (
   end_date date not null,
   kind text not null,
   note text not null default '',
+  replaces text,                              -- 대신하는 엑셀 근태 줄 "이름|시작일|종료일|구분" (2026-11-04)
+  hidden boolean not null default false,      -- true = 화면에서 숨김(삭제)
   created_by text default (auth.jwt() ->> 'email'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
