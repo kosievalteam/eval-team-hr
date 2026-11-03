@@ -15,7 +15,7 @@ const state = {
   pOwner: "",
   pStatus: "",
   user: null,
-  rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["age", -1] },
+  rvFilter: { kind: "", field: "", who: "", stage: "_nofinal", q: "", sort: ["accepted", 1] },
 };
 
 const PAGES = { dashboard: "대시보드", notices: "공지사항", duty: "업무분장표", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", pclog: "공용 PC 사용대장", leave: "복무관리" };
@@ -1495,10 +1495,14 @@ function renderReviewList() {
     (!f.who || (f.who === "_none" ? !r.assignee : r.assignee === f.who)) &&
     (!q || [r.no, r.agency, r.name, r.memo].join("\n").toLowerCase().includes(q)));
   const stages = [...new Set(rows.map(r => r.state).filter(Boolean))].sort();
-  const list = base.filter(r => !f.stage || (f.stage === "_open" ? REVIEW_OPEN.includes(r.state) : r.state === f.stage));
+  // _nofinal = 진행 중인데 아직 최종(팀장) 폴더에 올라오지 않은 건 (기본 보기)
+  const noFinal = r => REVIEW_OPEN.includes(r.state) && !r.final;
+  const list = base.filter(r => !f.stage || (f.stage === "_nofinal" ? noFinal(r) : f.stage === "_open" ? REVIEW_OPEN.includes(r.state) : r.state === f.stage));
   const [sk, dir] = f.sort;
   list.sort((a, b) => {
     const x = a[sk], y = b[sk];
+    // 날짜·글자 열은 빈 칸을 정렬 방향과 상관없이 맨 뒤로 보낸다
+    if (!RV_NUM.has(sk) && (x || "") === "" !== ((y || "") === "")) return (x || "") === "" ? 1 : -1;
     const c = RV_NUM.has(sk) ? (x === "" ? -1e9 : +x) - (y === "" ? -1e9 : +y) : String(x).localeCompare(String(y), "ko");
     return c * dir || b.no.localeCompare(a.no);
   });
@@ -1535,7 +1539,7 @@ function renderReviewList() {
       <input id="rvQ" placeholder="사업명·부처·메모로 찾기" value="${esc(f.q)}" style="margin-left:auto;min-width:220px">
     </div>
     <div class="toolbar">
-      <div class="seg wrap">${chip("rs", "_open", `진행 중 ${open.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}</div>
+      <div class="seg wrap">${chip("rs", "_nofinal", `최종(팀장) 전 ${base.filter(noFinal).length}`)}${chip("rs", "_open", `진행 중 ${open.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}</div>
       <span class="muted small" style="margin-left:auto">${list.length}건</span>
     </div>
     <div class="card"><div class="table-wrap rv-wrap"><table class="rvtable">
