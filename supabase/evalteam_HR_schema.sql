@@ -397,3 +397,21 @@ revoke execute on function public.hr_new_week(text, text, text, text, text, date
   public.hr_member_email(text) from public, anon;
 grant execute on function public.hr_new_week(text, text, text, text, text, date, date, text),
   public.hr_member_email(text), public.hr_is_member(), public.hr_is_admin(), public.hr_my_name() to authenticated;
+
+-- ------------------------------------------------------------ 업무분장표 (2026-11-04 추가)
+-- 웹에서 시트처럼 직접 입력. 한 장(id = 1)에 {cols: [...], rows: [[...]]}. 읽기는 팀원, 쓰기는 관리자만.
+create table public.hr_duty (
+  id integer primary key default 1 check (id = 1),
+  data jsonb not null default '{"cols": [], "rows": []}',
+  updated_by text default (auth.jwt() ->> 'email'),
+  updated_at timestamptz not null default now()
+);
+create trigger hr_duty_touch before update on public.hr_duty for each row execute function public.hr_touch();
+alter table public.hr_duty enable row level security;
+create policy hr_duty_read on public.hr_duty for select to authenticated using ((select public.hr_is_member()));
+create policy hr_duty_ins on public.hr_duty for insert to authenticated
+  with check ((select public.hr_is_admin()) and lower(updated_by) = (select public.hr_my_email()));
+create policy hr_duty_upd on public.hr_duty for update to authenticated
+  using ((select public.hr_is_admin()))
+  with check ((select public.hr_is_admin()) and lower(updated_by) = (select public.hr_my_email()));
+grant select, insert, update on public.hr_duty to authenticated;

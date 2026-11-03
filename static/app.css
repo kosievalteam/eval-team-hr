@@ -323,3 +323,11 @@ dialog::backdrop { background: rgba(20, 26, 38, .45); }
 .duty-table { border-collapse: collapse; font-size: 13px; }
 .duty-table th, .duty-table td { border: 1px solid var(--line); padding: 6px 10px; vertical-align: top; white-space: normal; }
 .duty-table th { background: #f3f5f9; font-weight: 700; text-align: center; }
+.duty-table td, .duty-table th { min-width: 90px; }
+.duty-table.editing td, .duty-table.editing th { padding: 0; position: relative; }
+.duty-table .dc { min-height: 30px; padding: 6px 10px; outline: none; white-space: pre-wrap; }
+.duty-table .dc:focus { background: #eef4ff; box-shadow: inset 0 0 0 2px var(--pri); }
+.duty-table th .dc { font-weight: 700; }
+.duty-table .x { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 4px 6px; }
+.duty-table th .x { position: absolute; top: 2px; right: 2px; }
+.duty-table .x:hover { color: var(--red); }

@@ -15,7 +15,7 @@ const state = {
   pOwner: "",
   pStatus: "",
   user: null,
-  rvFilter: { kind: "", field: "", who: "", stage: "_nofinal", q: "", sort: ["accepted", 1] },
+  rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["accepted", -1] },
 };
 
 const PAGES = { dashboard: "대시보드", notices: "공지사항", duty: "업무분장표", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", pclog: "공용 PC 사용대장", leave: "복무관리" };
@@ -212,7 +212,7 @@ async function fetchBase() {
 }
 
 async function fetchWeb() {
-  const [notices, slack, pclog, leave, weeks, weekly, tasks, review] = await Promise.all([
+  const [notices, slack, pclog, leave, weeks, weekly, tasks, review, duty] = await Promise.all([
     must(sb.from("hr_notices").select("*")),
     must(sb.from("hr_slack_notices").select("*")),
     must(sb.from("hr_pc_log").select("*")),
@@ -221,8 +221,9 @@ async function fetchWeb() {
     must(sb.from("hr_weekly").select("*").order("id")),
     must(sb.from("hr_tasks").select("*").order("id")),
     must(sb.from("hr_review").select("*")),
+    must(sb.from("hr_duty").select("*")),
   ]);
-  return { notices, slack, pclog, leave, weeks, weekly, tasks, review };
+  return { notices, slack, pclog, leave, weeks, weekly, tasks, review, duty };
 }
 
 function merge(d, web) {
@@ -235,6 +236,7 @@ function merge(d, web) {
       author: s.author, date: s.date, important: false, permalink: s.permalink, edited: s.edited, reply_count: s.reply_count };
   })];
   d.pclog = web.pclog;
+  d.duty = web.duty[0] || null;
 
   web.leave.filter(r => names.has(r.name)).forEach(r => {
     const c = classify(r.kind, hpd);
@@ -1427,28 +1429,112 @@ function openLeave(e) {
 }
 
 /* ------------------------------------------------------------ 업무분장표 */
-// 팀서무 폴더의 업무분장.xlsx를 서식 없이 표 그대로(병합 셀 포함) 보여준다. 첫 행은 제목 행으로 굵게.
+// 웹에서 시트처럼 직접 입력한다(hr_duty 한 장: {cols, rows}). 보기는 팀원 모두, 수정은 관리자만(DB 규칙으로도 막힘).
+// 편집 중에는 엑셀에서 복사한 범위를 붙여넣으면 누른 칸부터 채우고, 모자라는 행·열은 늘린다.
+function dutyDefault() {
+  return { cols: ["이름", "직위", "주요 업무", "세부 업무", "비고"],
+           rows: state.data.members.map(m => [m.name, m.position || "", "", "", ""]) };
+}
+function dutySheet() {
+  const d = state.data.duty?.data;
+  return d && d.cols?.length ? d : dutyDefault();
+}
+// 엑셀 복사 형식(탭·줄바꿈, 큰따옴표로 감싼 여러 줄 칸)을 2차원 배열로
+function parseTsv(text) {
+  const rows = [[]];
+  let cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') q = false;
+      else cell += ch;
+    } else if (ch === '"' && cell === "") q = true;
+    else if (ch === "\t") { rows[rows.length - 1].push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      rows[rows.length - 1].push(cell); cell = ""; rows.push([]);
+    } else cell += ch;
+  }
+  rows[rows.length - 1].push(cell);
+  while (rows.length && rows[rows.length - 1].every(c => c === "")) rows.pop();
+  return rows;
+}
+
 function renderDuty() {
-  const { duty = [], duty_error: err = "" } = state.data;
-  const table = sh => {
-    const skip = new Set(), span = {};
-    sh.merges.forEach(([r1, c1, r2, c2]) => {
-      span[`${r1},${c1}`] = [r2 - r1 + 1, c2 - c1 + 1];
-      for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) if (r !== r1 || c !== c1) skip.add(`${r},${c}`);
-    });
-    const head = sh.rows.findIndex(r => r.filter(Boolean).length >= 2);  // 첫 번째 '여러 칸이 채워진' 행 = 머리글
-    return `<div class="table-wrap"><table class="duty-table"><tbody>${sh.rows.map((row, r) => `<tr>${row.map((v, c) => {
-      if (skip.has(`${r},${c}`)) return "";
-      const [rs, cs] = span[`${r},${c}`] || [1, 1];
-      const tag = r === head ? "th" : "td";
-      return `<${tag}${rs > 1 ? ` rowspan="${rs}"` : ""}${cs > 1 ? ` colspan="${cs}"` : ""}>${esc(v).replace(/\n/g, "<br>")}</${tag}>`;
-    }).join("")}</tr>`).join("")}</tbody></table></div>`;
+  const el = $("#page-duty");
+  const admin = !!state.user?.admin;
+  const draft = state.dutyDraft;  // 편집 중이면 작업본
+  const sh = draft || dutySheet();
+  const meta = state.data.duty ? `최종 수정 ${esc((state.data.duty.updated_at || "").slice(0, 16).replace("T", " "))} · ${esc(state.data.duty.updated_by || "")}` : "아직 저장된 업무분장표가 없습니다";
+  const width = sh.cols.length;
+  const cellView = v => esc(v || "").replace(/\n/g, "<br>");
+  const cellEdit = (v, r, c) => `<div class="dc" contenteditable="true" data-r="${r}" data-c="${c}">${cellView(v)}</div>`;
+
+  el.innerHTML = `
+    <div class="toolbar">
+      <span class="muted small">${meta}</span>
+      ${draft ? `
+        <button class="btn-sec" data-duty="addrow" style="margin-left:auto">+ 행 추가</button>
+        <button class="btn-sec" data-duty="addcol">+ 열 추가</button>
+        <button class="btn-sec" data-duty="cancel">취소</button>
+        <button class="btn-pri" data-duty="save">저장</button>`
+      : admin ? `<button class="btn-pri" data-duty="edit" style="margin-left:auto">✎ 편집</button>`
+      : `<span class="small muted" style="margin-left:auto">수정은 관리자만 할 수 있습니다</span>`}
+    </div>
+    ${draft ? `<p class="small muted" style="margin:0 0 10px">칸을 눌러 바로 입력하세요(줄바꿈 Shift+Enter 또는 Enter). 엑셀에서 범위를 복사해 칸에 붙여넣으면 그 칸부터 채워집니다. 첫 줄은 제목 행입니다.</p>` : ""}
+    <div class="card"><div class="table-wrap"><table class="duty-table ${draft ? "editing" : ""}">
+      <thead><tr>${sh.cols.map((h, c) => `<th>${draft ? cellEdit(h, -1, c) + (width > 1 ? `<button class="x" data-delcol="${c}" title="이 열 삭제">✕</button>` : "") : cellView(h)}</th>`).join("")}${draft ? "<th></th>" : ""}</tr></thead>
+      <tbody>${sh.rows.map((row, r) => `<tr>${sh.cols.map((_, c) => `<td>${draft ? cellEdit(row[c], r, c) : cellView(row[c])}</td>`).join("")}${draft ? `<td><button class="x" data-delrow="${r}" title="이 행 삭제">✕</button></td>` : ""}</tr>`).join("")
+        || `<tr><td colspan="${width}" class="empty">내용이 없습니다.</td></tr>`}</tbody>
+    </table></div></div>`;
+
+  // 화면의 입력값을 작업본에 옮긴다(행·열을 바꾸거나 저장하기 전)
+  const readDom = () => el.querySelectorAll(".dc").forEach(d => {
+    const r = +d.dataset.r, c = +d.dataset.c, v = d.innerText.replace(/\n$/, "");
+    if (r < 0) draft.cols[c] = v; else draft.rows[r][c] = v;
+  });
+  const act = {
+    edit: () => { const s = dutySheet(); state.dutyDraft = { cols: [...s.cols], rows: s.rows.map(r => s.cols.map((_, c) => r[c] || "")) }; },
+    cancel: () => { if (confirm("편집한 내용을 버릴까요?")) state.dutyDraft = null; },
+    addrow: () => { readDom(); draft.rows.push(draft.cols.map(() => "")); },
+    addcol: () => { readDom(); draft.cols.push(""); draft.rows.forEach(r => r.push("")); },
+    save: async () => {
+      readDom();
+      const data = { cols: draft.cols, rows: draft.rows.filter(r => r.some(v => v.trim())) };
+      try {
+        await must(sb.from("hr_duty").upsert({ id: 1, data, updated_by: state.user.email }));
+        state.dutyDraft = null;
+        await load();
+      } catch (err) { alert(err.message || err); }
+      return true;
+    },
   };
-  $("#page-duty").innerHTML = duty.length
-    ? duty.map(sh => `<div class="card mt"><div class="card-h"><h2>${esc(sh.title)}</h2></div>${table(sh)}</div>`).join("")
-      + `<p class="small muted" style="margin:12px 0 0">※ 원본: OneDrive 업무자료 › 팀서무 › 업무분장.xlsx (배포 때 갱신). 고칠 때는 엑셀에서 고친 뒤 배포하세요.</p>`
-    : `<div class="card empty">업무분장표를 아직 불러오지 못했습니다.${err ? `<br><span class="small muted">${esc(err.replace(/^.*?:\s*/, "").slice(0, 120))}</span>` : ""}<br>
-       <span class="small muted">OneDrive 업무자료 › 팀서무 › 업무분장.xlsx가 이 PC에 내려받아져 있어야 합니다.</span></div>`;
+  el.querySelectorAll("[data-duty]").forEach(b => b.onclick = async () => { if (!(await act[b.dataset.duty]())) renderDuty(); });
+  el.querySelectorAll("[data-delrow]").forEach(b => b.onclick = () => { readDom(); draft.rows.splice(+b.dataset.delrow, 1); renderDuty(); });
+  el.querySelectorAll("[data-delcol]").forEach(b => b.onclick = () => {
+    readDom();
+    const c = +b.dataset.delcol;
+    if (!confirm(`'${draft.cols[c] || "제목 없음"}' 열을 지울까요?`)) return;
+    draft.cols.splice(c, 1); draft.rows.forEach(r => r.splice(c, 1)); renderDuty();
+  });
+  if (!draft) return;
+  el.querySelector("table").addEventListener("paste", ev => {
+    const cell = ev.target.closest?.(".dc");
+    const text = ev.clipboardData.getData("text/plain");
+    if (!cell || !/[\t\n]/.test(text.replace(/\n$/, ""))) return;  // 한 칸짜리 글은 그대로 붙여넣기
+    ev.preventDefault();
+    readDom();
+    const grid = parseTsv(text), r0 = +cell.dataset.r, c0 = +cell.dataset.c;
+    grid.forEach((line, i) => line.forEach((v, j) => {
+      const r = r0 + i, c = c0 + j;
+      while (c >= draft.cols.length) { draft.cols.push(""); draft.rows.forEach(x => x.push("")); }
+      if (r < 0) { draft.cols[c] = v; return; }
+      while (r >= draft.rows.length) draft.rows.push(draft.cols.map(() => ""));
+      draft.rows[r][c] = v;
+    }));
+    renderDuty();
+  });
 }
 
 /* ------------------------------------------------------------ 협의검토 */
@@ -1456,6 +1542,7 @@ function renderDuty() {
 // 검토자·초안·검토본·메모는 웹에서 덮어쓸 수 있다.
 const REVIEW_EDIT = ["assignee", "draft", "draft_review", "memo"];
 const REVIEW_OPEN = ["접수완료", "검토진행", "재협의대기", "재협의진행"];  // 접수완료 후 아직 끝나지 않은 단계
+const REVIEW_ACTIVE = ["접수대기", ...REVIEW_OPEN];  // '진행 중' 보기 = 접수대기 포함, 아직 끝나지 않은 건
 const RV_COLS = [
   ["no", "협의번호"], ["assignee", "검토자"], ["kind", "구분"], ["agency", "기관"], ["field", "분야"], ["name", "사업명"],
   ["state", "진행상태"], ["received", "접수"], ["accepted", "접수완료"],
@@ -1497,16 +1584,18 @@ function renderReviewList() {
   const stages = [...new Set(rows.map(r => r.state).filter(Boolean))].sort();
   // _nofinal = 진행 중인데 아직 최종(팀장) 폴더에 올라오지 않은 건 (기본 보기)
   const noFinal = r => REVIEW_OPEN.includes(r.state) && !r.final;
-  const list = base.filter(r => !f.stage || (f.stage === "_nofinal" ? noFinal(r) : f.stage === "_open" ? REVIEW_OPEN.includes(r.state) : r.state === f.stage));
+  const list = base.filter(r => !f.stage || (f.stage === "_nofinal" ? noFinal(r) : f.stage === "_open" ? REVIEW_ACTIVE.includes(r.state) : r.state === f.stage));
   const [sk, dir] = f.sort;
   list.sort((a, b) => {
     const x = a[sk], y = b[sk];
-    // 날짜·글자 열은 빈 칸을 정렬 방향과 상관없이 맨 뒤로 보낸다
+    // 접수완료가 빈 칸(접수대기)은 가장 최근 건으로 보고, 다른 날짜·글자 열의 빈 칸은 늘 맨 뒤로 보낸다
+    if (sk === "accepted" && (x || "") === "" !== ((y || "") === "")) return ((x || "") === "" ? 1 : -1) * dir;
     if (!RV_NUM.has(sk) && (x || "") === "" !== ((y || "") === "")) return (x || "") === "" ? 1 : -1;
     const c = RV_NUM.has(sk) ? (x === "" ? -1e9 : +x) - (y === "" ? -1e9 : +y) : String(x).localeCompare(String(y), "ko");
     return c * dir || b.no.localeCompare(a.no);
   });
   const open = base.filter(r => REVIEW_OPEN.includes(r.state));
+  const active = base.filter(r => REVIEW_ACTIVE.includes(r.state));
   const opts = (vals, cur) => vals.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("");
   const chip = (key, v, l) => `<button data-${key}="${esc(v)}" class="${f[key === "rk" ? "kind" : "stage"] === v ? "on" : ""}">${esc(l)}</button>`;
   const people = ownerOrder(new Set(rows.map(r => r.assignee).filter(Boolean)));
@@ -1528,7 +1617,7 @@ function renderReviewList() {
   el.innerHTML = `
     <div class="stats" style="margin-bottom:16px">
       <div class="card stat"><div class="dot c-blue">⚖</div><div><div class="num">${base.length}</div><div class="lbl">협의건</div></div></div>
-      <div class="card stat"><div class="dot c-violet">▶</div><div><div class="num">${open.length}</div><div class="lbl">진행 중 (접수완료 후 미완료)</div></div></div>
+      <div class="card stat"><div class="dot c-violet">▶</div><div><div class="num">${active.length}</div><div class="lbl">진행 중 (접수대기 ${active.length - open.length} 포함)</div></div></div>
       <div class="card stat"><div class="dot c-amber">✎</div><div><div class="num">${open.filter(r => r.draft).length}/${open.length}</div><div class="lbl">진행 중 초안 작성</div></div></div>
       <div class="card stat"><div class="dot c-red">!</div><div><div class="num">${open.filter(r => r.age >= 30).length}</div><div class="lbl">경과 30일 이상 (60일 이상 ${open.filter(r => r.age >= 60).length})</div></div></div>
     </div>
@@ -1539,7 +1628,7 @@ function renderReviewList() {
       <input id="rvQ" placeholder="사업명·부처·메모로 찾기" value="${esc(f.q)}" style="margin-left:auto;min-width:220px">
     </div>
     <div class="toolbar">
-      <div class="seg wrap">${chip("rs", "_open", `진행 중 ${open.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}${chip("rs", "_nofinal", `최종(팀장) 전 ${base.filter(noFinal).length}`)}</div>
+      <div class="seg wrap">${chip("rs", "_open", `진행 중 ${active.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}${chip("rs", "_nofinal", `최종(팀장) 전 ${base.filter(noFinal).length}`)}</div>
       <span class="muted small" style="margin-left:auto">${list.length}건</span>
     </div>
     <div class="card"><div class="table-wrap rv-wrap"><table class="rvtable">
@@ -1605,6 +1694,10 @@ function route() {
   render();
 }
 window.addEventListener("hashchange", route);
+document.querySelectorAll('.nav a[data-page="reviews"]').forEach(a => a.addEventListener("click", () => {
+  Object.assign(state.rvFilter, { stage: "_open", sort: ["accepted", -1] });
+  if (state.page === "reviews") render();
+}));
 $("#btnReload").onclick = () => load(true);
 $("#menuBtn").onclick = () => $("#sidebar").classList.toggle("open");
 setInterval(() => { if (!document.hidden) load(); }, 5 * 60 * 1000);
