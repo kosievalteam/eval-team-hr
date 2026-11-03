@@ -97,8 +97,7 @@ function loginGate(message) {
     let mode = "login";
     const draw = msg => {
       gate.innerHTML = `<form class="gate-box">
-        <div class="brand-mark" style="margin:0 auto 12px">평</div>
-        <h2>정책평가팀 HR</h2>
+        <div class="brand-mark" style="display:flex;width:fit-content;margin:0 auto 14px;align-items:center">정책평가팀<small>HR 관리</small></div>
         ${mode === "signup" ? `<p class="muted small">처음 쓰는 경우 @kosi.re.kr 이메일로 가입하세요.</p>` : ""}
         <input type="email" name="email" placeholder="이메일 (@kosi.re.kr)" autocomplete="username" required>
         <input type="password" name="pw" placeholder="비밀번호${mode === "signup" ? " (6자 이상)" : ""}" autocomplete="${mode === "login" ? "current-password" : "new-password"}" minlength="6" required>
