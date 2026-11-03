@@ -18,7 +18,7 @@ const state = {
   rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["accepted", -1] },
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장관리", pclog: "공용 PC 사용대장", leave: "복무관리" };
+const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장", pclog: "공용 PC 사용대장", leave: "복무관리" };
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const $ = (s, el = document) => el.querySelector(s);
@@ -1428,7 +1428,7 @@ function openLeave(e) {
   });
 }
 
-/* ------------------------------------------------------------ 업무분장관리 */
+/* ------------------------------------------------------------ 업무분장 */
 // 행 = 담당자(팀원 명단 순서), 열 = 업무영역 4개로 고정. 칸 내용만 웹에서 입력한다(hr_duty 한 장: {cols, rows}).
 // 보기는 팀원 모두, 수정은 관리자만(DB 규칙으로도 막힘). 편집 중 엑셀에서 복사한 범위를 붙여넣으면 누른 칸부터 채운다.
 const DUTY_AREAS = ["성과평가", "사전협의", "현황조사", "만족도조사"];
@@ -1472,6 +1472,12 @@ function renderDuty() {
   const pos = Object.fromEntries(state.data.members.map(m => [m.name, m.position || ""]));
   const cellView = v => esc(v || "").replace(/\n/g, "<br>");
   const cellEdit = (v, r, c) => `<div class="dc" contenteditable="true" data-r="${r}" data-c="${c}">${cellView(v)}</div>`;
+  // 보기 화면: 칸 안의 줄마다 한 항목(앞의 -, ·, • 같은 글머리는 떼고 점으로 통일), 빈 칸은 흐린 대시
+  const cellList = v => {
+    const items = String(v || "").split("\n").map(s => s.replace(/^\s*[-·•*▪◦○●]\s*/, "").trim()).filter(Boolean);
+    return items.length ? `<ul class="duty-list">${items.map(s => `<li>${esc(s)}</li>`).join("")}</ul>` : `<span class="duty-none">—</span>`;
+  };
+  const count = j => rows.filter(r => (r[j + 1] || "").trim()).length;
 
   el.innerHTML = `
     <div class="toolbar">
@@ -1483,9 +1489,9 @@ function renderDuty() {
       : `<span class="small muted" style="margin-left:auto">수정은 관리자만 할 수 있습니다</span>`}
     </div>
     ${draft ? `<p class="small muted" style="margin:0 0 10px">칸을 눌러 바로 입력하세요(줄바꿈 Enter). 엑셀에서 범위를 복사해 칸에 붙여넣으면 그 칸부터 채워집니다. 담당자는 팀원 명단에서 자동으로 채워집니다.</p>` : ""}
-    <div class="card"><div class="table-wrap"><table class="duty-table ${draft ? "editing" : ""}">
-      <thead><tr><th>담당자</th>${DUTY_AREAS.map(a => `<th>${a}</th>`).join("")}</tr></thead>
-      <tbody>${rows.map((row, r) => `<tr><th class="who">${esc(row[0])}${pos[row[0]] ? `<small>${esc(pos[row[0]])}</small>` : ""}</th>${DUTY_AREAS.map((_, j) => `<td>${draft ? cellEdit(row[j + 1], r, j + 1) : cellView(row[j + 1])}</td>`).join("")}</tr>`).join("")
+    <div class="card duty-card"><div class="table-wrap"><table class="duty-table ${draft ? "editing" : ""}">
+      <thead><tr><th class="who-h">담당자</th>${DUTY_AREAS.map((a, j) => `<th class="area a${j}"><span class="area-name">${a}</span><span class="area-n">${count(j)}명</span></th>`).join("")}</tr></thead>
+      <tbody>${rows.map((row, r) => `<tr><th class="who"><span class="avatar">${esc(row[0].slice(-2))}</span><span class="who-t"><b>${esc(row[0])}</b>${pos[row[0]] ? `<small>${esc(pos[row[0]])}</small>` : ""}</span></th>${DUTY_AREAS.map((_, j) => `<td class="a${j}">${draft ? cellEdit(row[j + 1], r, j + 1) : cellList(row[j + 1])}</td>`).join("")}</tr>`).join("")
         || `<tr><td colspan="${DUTY_AREAS.length + 1}" class="empty">팀원 명단이 없습니다.</td></tr>`}</tbody>
     </table></div></div>`;
 
