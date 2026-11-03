@@ -1472,10 +1472,10 @@ function renderDuty() {
   const pos = Object.fromEntries(state.data.members.map(m => [m.name, m.position || ""]));
   const cellView = v => esc(v || "").replace(/\n/g, "<br>");
   const cellEdit = (v, r, c) => `<div class="dc" contenteditable="true" data-r="${r}" data-c="${c}">${cellView(v)}</div>`;
-  // 보기 화면: 칸 안의 줄마다 한 항목(앞의 -, ·, • 같은 글머리는 떼고 점으로 통일), 빈 칸은 흐린 대시
+  // 보기 화면: 칸 안의 줄마다 한 항목(앞의 -, ·, • 같은 글머리는 떼고 점으로 통일), 빈 칸은 흐린 대시. '실무 총괄'은 굵게
   const cellList = v => {
     const items = String(v || "").split("\n").map(s => s.replace(/^\s*[-·•*▪◦○●]\s*/, "").trim()).filter(Boolean);
-    return items.length ? `<ul class="duty-list">${items.map(s => `<li>${esc(s)}</li>`).join("")}</ul>` : `<span class="duty-none">—</span>`;
+    return items.length ? `<ul class="duty-list">${items.map(s => `<li${/실무\s*총괄/.test(s) ? ' class="lead"' : ""}>${esc(s)}</li>`).join("")}</ul>` : `<span class="duty-none">—</span>`;
   };
   const count = j => rows.filter(r => (r[j + 1] || "").trim()).length;
 

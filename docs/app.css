@@ -346,6 +346,7 @@ dialog::backdrop { background: rgba(20, 26, 38, .45); }
 .duty-list li + li { margin-top: 4px; }
 .duty-list li::before { content: ""; position: absolute; left: 0; top: .6em; width: 6px; height: 6px; border-radius: 50%; background: var(--ac); }
 .duty-none { color: #c3c8d2; }
+.duty-list li.lead { font-weight: 800; color: var(--ac); }
 /* 편집 중 */
 .duty-table.editing td { padding: 0; }
 .duty-table .dc { min-height: 64px; padding: 12px 14px; outline: none; white-space: pre-wrap; }
