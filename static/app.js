@@ -18,7 +18,7 @@ const state = {
   rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["accepted", -1] },
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", duty: "업무분장표", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", pclog: "공용 PC 사용대장", leave: "복무관리" };
+const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장관리", pclog: "공용 PC 사용대장", leave: "복무관리" };
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const $ = (s, el = document) => el.querySelector(s);
@@ -1428,16 +1428,18 @@ function openLeave(e) {
   });
 }
 
-/* ------------------------------------------------------------ 업무분장표 */
-// 웹에서 시트처럼 직접 입력한다(hr_duty 한 장: {cols, rows}). 보기는 팀원 모두, 수정은 관리자만(DB 규칙으로도 막힘).
-// 편집 중에는 엑셀에서 복사한 범위를 붙여넣으면 누른 칸부터 채우고, 모자라는 행·열은 늘린다.
-function dutyDefault() {
-  return { cols: ["이름", "직위", "주요 업무", "세부 업무", "비고"],
-           rows: state.data.members.map(m => [m.name, m.position || "", "", "", ""]) };
-}
+/* ------------------------------------------------------------ 업무분장관리 */
+// 행 = 담당자(팀원 명단 순서), 열 = 업무영역 4개로 고정. 칸 내용만 웹에서 입력한다(hr_duty 한 장: {cols, rows}).
+// 보기는 팀원 모두, 수정은 관리자만(DB 규칙으로도 막힘). 편집 중 엑셀에서 복사한 범위를 붙여넣으면 누른 칸부터 채운다.
+const DUTY_AREAS = ["성과평가", "사전협의", "현황조사", "만족도조사"];
+// 저장본을 담당자 이름으로 찾아 [이름, 영역1..4] 행으로 맞춘다(명단에 새로 들어온 사람은 빈 행)
 function dutySheet() {
-  const d = state.data.duty?.data;
-  return d && d.cols?.length ? d : dutyDefault();
+  const d = state.data.duty?.data, saved = new Map();
+  if (d?.rows) {
+    const idx = DUTY_AREAS.map(a => (d.cols || []).indexOf(a));
+    d.rows.forEach(r => saved.set(r[0], idx.map(i => (i > 0 ? r[i] : "") || "")));
+  }
+  return state.data.members.map(m => [m.name, ...(saved.get(m.name) || DUTY_AREAS.map(() => ""))]);
 }
 // 엑셀 복사 형식(탭·줄바꿈, 큰따옴표로 감싼 여러 줄 칸)을 2차원 배열로
 function parseTsv(text) {
@@ -1464,10 +1466,10 @@ function parseTsv(text) {
 function renderDuty() {
   const el = $("#page-duty");
   const admin = !!state.user?.admin;
-  const draft = state.dutyDraft;  // 편집 중이면 작업본
-  const sh = draft || dutySheet();
-  const meta = state.data.duty ? `최종 수정 ${esc((state.data.duty.updated_at || "").slice(0, 16).replace("T", " "))} · ${esc(state.data.duty.updated_by || "")}` : "아직 저장된 업무분장표가 없습니다";
-  const width = sh.cols.length;
+  const draft = state.dutyDraft;  // 편집 중이면 작업본(행마다 [이름, 영역1..4])
+  const rows = draft || dutySheet();
+  const meta = state.data.duty ? `최종 수정 ${esc((state.data.duty.updated_at || "").slice(0, 16).replace("T", " "))} · ${esc(state.data.duty.updated_by || "")}` : "아직 저장된 업무분장이 없습니다";
+  const pos = Object.fromEntries(state.data.members.map(m => [m.name, m.position || ""]));
   const cellView = v => esc(v || "").replace(/\n/g, "<br>");
   const cellEdit = (v, r, c) => `<div class="dc" contenteditable="true" data-r="${r}" data-c="${c}">${cellView(v)}</div>`;
 
@@ -1475,33 +1477,26 @@ function renderDuty() {
     <div class="toolbar">
       <span class="muted small">${meta}</span>
       ${draft ? `
-        <button class="btn-sec" data-duty="addrow" style="margin-left:auto">+ 행 추가</button>
-        <button class="btn-sec" data-duty="addcol">+ 열 추가</button>
-        <button class="btn-sec" data-duty="cancel">취소</button>
+        <button class="btn-sec" data-duty="cancel" style="margin-left:auto">취소</button>
         <button class="btn-pri" data-duty="save">저장</button>`
       : admin ? `<button class="btn-pri" data-duty="edit" style="margin-left:auto">✎ 편집</button>`
       : `<span class="small muted" style="margin-left:auto">수정은 관리자만 할 수 있습니다</span>`}
     </div>
-    ${draft ? `<p class="small muted" style="margin:0 0 10px">칸을 눌러 바로 입력하세요(줄바꿈 Shift+Enter 또는 Enter). 엑셀에서 범위를 복사해 칸에 붙여넣으면 그 칸부터 채워집니다. 첫 줄은 제목 행입니다.</p>` : ""}
+    ${draft ? `<p class="small muted" style="margin:0 0 10px">칸을 눌러 바로 입력하세요(줄바꿈 Enter). 엑셀에서 범위를 복사해 칸에 붙여넣으면 그 칸부터 채워집니다. 담당자는 팀원 명단에서 자동으로 채워집니다.</p>` : ""}
     <div class="card"><div class="table-wrap"><table class="duty-table ${draft ? "editing" : ""}">
-      <thead><tr>${sh.cols.map((h, c) => `<th>${draft ? cellEdit(h, -1, c) + (width > 1 ? `<button class="x" data-delcol="${c}" title="이 열 삭제">✕</button>` : "") : cellView(h)}</th>`).join("")}${draft ? "<th></th>" : ""}</tr></thead>
-      <tbody>${sh.rows.map((row, r) => `<tr>${sh.cols.map((_, c) => `<td>${draft ? cellEdit(row[c], r, c) : cellView(row[c])}</td>`).join("")}${draft ? `<td><button class="x" data-delrow="${r}" title="이 행 삭제">✕</button></td>` : ""}</tr>`).join("")
-        || `<tr><td colspan="${width}" class="empty">내용이 없습니다.</td></tr>`}</tbody>
+      <thead><tr><th>담당자</th>${DUTY_AREAS.map(a => `<th>${a}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map((row, r) => `<tr><th class="who">${esc(row[0])}${pos[row[0]] ? `<small>${esc(pos[row[0]])}</small>` : ""}</th>${DUTY_AREAS.map((_, j) => `<td>${draft ? cellEdit(row[j + 1], r, j + 1) : cellView(row[j + 1])}</td>`).join("")}</tr>`).join("")
+        || `<tr><td colspan="${DUTY_AREAS.length + 1}" class="empty">팀원 명단이 없습니다.</td></tr>`}</tbody>
     </table></div></div>`;
 
-  // 화면의 입력값을 작업본에 옮긴다(행·열을 바꾸거나 저장하기 전)
-  const readDom = () => el.querySelectorAll(".dc").forEach(d => {
-    const r = +d.dataset.r, c = +d.dataset.c, v = d.innerText.replace(/\n$/, "");
-    if (r < 0) draft.cols[c] = v; else draft.rows[r][c] = v;
-  });
+  // 화면의 입력값을 작업본에 옮긴다(붙여넣기·저장 전)
+  const readDom = () => el.querySelectorAll(".dc").forEach(d => { draft[+d.dataset.r][+d.dataset.c] = d.innerText.replace(/\n$/, ""); });
   const act = {
-    edit: () => { const s = dutySheet(); state.dutyDraft = { cols: [...s.cols], rows: s.rows.map(r => s.cols.map((_, c) => r[c] || "")) }; },
+    edit: () => { state.dutyDraft = dutySheet(); },
     cancel: () => { if (confirm("편집한 내용을 버릴까요?")) state.dutyDraft = null; },
-    addrow: () => { readDom(); draft.rows.push(draft.cols.map(() => "")); },
-    addcol: () => { readDom(); draft.cols.push(""); draft.rows.forEach(r => r.push("")); },
     save: async () => {
       readDom();
-      const data = { cols: draft.cols, rows: draft.rows.filter(r => r.some(v => v.trim())) };
+      const data = { cols: ["담당자", ...DUTY_AREAS], rows: draft };
       try {
         await must(sb.from("hr_duty").upsert({ id: 1, data, updated_by: state.user.email }));
         state.dutyDraft = null;
@@ -1511,13 +1506,6 @@ function renderDuty() {
     },
   };
   el.querySelectorAll("[data-duty]").forEach(b => b.onclick = async () => { if (!(await act[b.dataset.duty]())) renderDuty(); });
-  el.querySelectorAll("[data-delrow]").forEach(b => b.onclick = () => { readDom(); draft.rows.splice(+b.dataset.delrow, 1); renderDuty(); });
-  el.querySelectorAll("[data-delcol]").forEach(b => b.onclick = () => {
-    readDom();
-    const c = +b.dataset.delcol;
-    if (!confirm(`'${draft.cols[c] || "제목 없음"}' 열을 지울까요?`)) return;
-    draft.cols.splice(c, 1); draft.rows.forEach(r => r.splice(c, 1)); renderDuty();
-  });
   if (!draft) return;
   el.querySelector("table").addEventListener("paste", ev => {
     const cell = ev.target.closest?.(".dc");
@@ -1525,13 +1513,10 @@ function renderDuty() {
     if (!cell || !/[\t\n]/.test(text.replace(/\n$/, ""))) return;  // 한 칸짜리 글은 그대로 붙여넣기
     ev.preventDefault();
     readDom();
-    const grid = parseTsv(text), r0 = +cell.dataset.r, c0 = +cell.dataset.c;
-    grid.forEach((line, i) => line.forEach((v, j) => {
+    const r0 = +cell.dataset.r, c0 = +cell.dataset.c;
+    parseTsv(text).forEach((line, i) => line.forEach((v, j) => {
       const r = r0 + i, c = c0 + j;
-      while (c >= draft.cols.length) { draft.cols.push(""); draft.rows.forEach(x => x.push("")); }
-      if (r < 0) { draft.cols[c] = v; return; }
-      while (r >= draft.rows.length) draft.rows.push(draft.cols.map(() => ""));
-      draft.rows[r][c] = v;
+      if (r < draft.length && c <= DUTY_AREAS.length) draft[r][c] = v;  // 표 밖으로 넘치는 부분은 버린다
     }));
     renderDuty();
   });
