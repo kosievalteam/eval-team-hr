@@ -1062,9 +1062,9 @@ function openPcLog(r) {
 function renderLeave() {
   const el = $("#page-leave");
   const tabs = `<div class="tabs">
-    ${[["list", "휴가 사용 내역"], ["status", "연차 상세 현황"], ["cal", "휴가 달력"]].map(([k, t]) =>
+    ${[["list", "근무 현황"], ["cal", "휴가 달력"]].map(([k, t]) =>
       `<button data-tab="${k}" class="${state.leaveTab === k ? "active" : ""}">${t}</button>`).join("")}</div>`;
-  const body = { list: leaveList, status: leaveStatus, cal: leaveCalendar }[state.leaveTab]();
+  const body = ({ list: leaveList, cal: leaveCalendar }[state.leaveTab] || leaveList)();
   el.innerHTML = tabs + body;
   el.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.leaveTab = b.dataset.tab; renderLeave(); });
   bindLeave(el);
@@ -1106,35 +1106,6 @@ function leaveList() {
         <td>${e.web && canEdit(e) ? `<button class="btn-sm" data-ledit="${e.wid}">수정</button>` : ""}</td>
       </tr>`).join("") || `<tr><td colspan="9" class="empty">조건에 맞는 내역이 없습니다.</td></tr>`}</tbody>
     </table></div></div>`;
-}
-
-function leaveStatus() {
-  const d = state.data;
-  const counts = name => {
-    const c = {};
-    d.entries.filter(e => e.name === name).forEach(e => (c[e.category] = (c[e.category] || 0) + 1));
-    return c;
-  };
-  const unset = d.members.filter(m => m.total == null).length;
-  return `
-    ${unset ? `<div class="holiday-banner" style="margin:0 0 16px">총 연차일수가 설정되지 않은 팀원이 ${unset}명 있습니다. <b>config.json</b>의 <code>total</code>(부여 연차)과 <code>prior_used</code>(엑셀 기록 이전 사용분)를 입력하면 잔여 연차가 계산됩니다.</div>` : ""}
-    <div class="card"><div class="table-wrap"><table>
-      <thead><tr><th>이름</th><th>직위</th><th class="num">부여</th><th class="num">사용</th><th class="num">예정</th><th class="num">잔여</th><th>사용률</th><th>유형별 건수</th></tr></thead>
-      <tbody>${d.members.map(m => {
-        const c = counts(m.name);
-        const pct = m.total ? Math.round(((m.used + m.planned) / m.total) * 100) : null;
-        return `<tr>
-          <td><b>${esc(m.name)}</b></td><td class="muted">${esc(m.position || "-")}</td>
-          <td class="num">${m.total == null ? `<span class="muted small">미설정</span>` : fmtDays(m.total)}</td>
-          <td class="num">${fmtDays(m.used)}</td>
-          <td class="num">${m.planned ? fmtDays(m.planned) : "-"}</td>
-          <td class="num">${m.remaining == null ? "-" : `<b style="color:${m.remaining < 0 ? "var(--red)" : "inherit"}">${fmtDays(m.remaining)}</b>`}</td>
-          <td style="min-width:120px">${pct == null ? `<span class="muted small">-</span>` : `<div class="bar"><i class="u" style="width:${Math.min(100, pct)}%"></i></div><span class="small muted">${pct}%</span>`}</td>
-          <td>${Object.entries(c).map(([k, v]) => pill("t-" + k, `${k} ${v}`)).join(" ") || `<span class="muted small">없음</span>`}</td>
-        </tr>`;
-      }).join("")}</tbody>
-    </table></div>
-    <p class="small muted" style="margin:12px 0 0">※ 연차 1일, 반차 0.5일, 시간단위휴가는 ${state.data.hours_per_day}시간=1일로 환산하며 주말·공휴일은 제외합니다. 공가·대외활동은 차감하지 않습니다.</p></div>`;
 }
 
 // inCard: 대시보드처럼 이미 카드 안에 넣을 때 바깥 카드를 생략한다.
@@ -1377,7 +1348,7 @@ function route() {
   const [p, sub] = location.hash.replace("#", "").split("/");
   state.page = PAGES[p] ? p : "dashboard";
   if (state.page === "tasks" && ["week", "area", "person"].includes(sub)) state.taskTab = sub;
-  if (state.page === "leave" && ["list", "status", "cal"].includes(sub)) state.leaveTab = sub;
+  if (state.page === "leave" && ["list", "cal"].includes(sub)) state.leaveTab = sub;
   if (state.page === "reviews" && ["list", "dash"].includes(sub)) state.rvTab = sub;
   $("#sidebar").classList.remove("open");
   render();
