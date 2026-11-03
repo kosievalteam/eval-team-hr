@@ -19,7 +19,7 @@ const state = {
   rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["age", -1] },
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "주간업무관리", reviews: "협의검토관리", pclog: "공용 PC 사용대장", leave: "근태관리" };
+const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "주간업무관리", reviews: "협의검토관리", pclog: "공용 PC 사용대장", leave: "복무관리" };
 const REVIEW_DASHBOARD = "https://kosievalteam.github.io/newbiz_dashboard/";
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -471,7 +471,7 @@ function renderDashboard() {
     <div class="card mt">${leaveCalendar(true)}</div>
 
     <div class="card mt">
-      <div class="card-h"><h2>최근 휴가 신청</h2><a class="right link" href="#leave">근태관리 →</a></div>
+      <div class="card-h"><h2>최근 휴가 신청</h2><a class="right link" href="#leave">복무관리 →</a></div>
       <div class="table-wrap"><table>
         <thead><tr><th>상태</th><th>신청자</th><th>유형</th><th>기간</th><th class="num">차감</th><th>상세</th></tr></thead>
         <tbody>${recent.map(e => `<tr>
@@ -1058,7 +1058,7 @@ function openPcLog(r) {
   });
 }
 
-/* ------------------------------------------------------------ leave (근태관리) */
+/* ------------------------------------------------------------ leave (복무관리) */
 function renderLeave() {
   const el = $("#page-leave");
   const tabs = `<div class="tabs">
