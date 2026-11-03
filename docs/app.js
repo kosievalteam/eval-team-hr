@@ -67,6 +67,14 @@ function shortLabel(e) {
   return e.category;
 }
 function pill(cls, text) { return `<span class="pill ${cls}">${esc(text)}</span>`; }
+// 사람 동그라미(이름 뒤 두 글자) — 업무분장 표와 같은 모양을 여러 화면에서 쓴다
+function avatar(name, cls = "") { return name ? `<span class="av ${cls}">${esc(String(name).slice(-2))}</span>` : ""; }
+function who(name) { return `<span class="who-cell">${avatar(name)}<b>${esc(name)}</b></span>`; }
+// 업무영역 색(업무분장 표와 같은 순서): 성과평가 · 사전협의 · 현황조사 · 만족도조사, 그 밖은 회색
+function areaCls(a) {
+  const i = ["성과평가", "사전협의", "현황조사", "만족도"].findIndex(k => String(a || "").includes(k));
+  return i < 0 ? "a-etc" : "a" + i;
+}
 
 /* ------------------------------------------------------------ data */
 // 엑셀 데이터: 로컬은 /api/data(엑셀 직접), 웹(GitHub Pages)은 배포 때 올린 Supabase 스냅샷.
@@ -452,10 +460,10 @@ function renderDashboard() {
   const holidayName = d.holidays[day];
   const total = d.members.length;
 
-  const chip = (x, note) => `<span class="chip">${esc(x.m.name)}${note ? ` <small>${esc(note)}</small>` : ""}</span>`;
+  const chip = (x, note) => `<span class="chip">${avatar(x.m.name)}${esc(x.m.name)}${note ? ` <small>${esc(note)}</small>` : ""}</span>`;
   const col = (title, cls, list, noteFn) => `
-    <div class="board-col">
-      <h3>${pill(cls, title)} <span class="muted small">${list.length}명</span></h3>
+    <div class="board-col ${cls}">
+      <h3><span>${title}</span><span class="bc-n">${list.length}명</span></h3>
       <div class="chips">${list.length ? list.map(x => chip(x, noteFn(x))).join("") : `<span class="empty">없음</span>`}</div>
     </div>`;
 
@@ -484,9 +492,9 @@ function renderDashboard() {
       </div>
       ${off ? `<div class="holiday-banner">${holidayName ? `🎌 ${esc(holidayName)}` : "주말"} — 근무일이 아닙니다.</div>` : `
       <div class="board mt">
-        ${col("출근", "t-연차", st.work, x => x.e ? shortLabel(x.e) : "")}
-        ${col("출장·외부활동", "t-출장", st.trip, x => shortLabel(x.e))}
-        ${col("휴가", "t-오후반차", st.leave, x => x.e.category)}
+        ${col("출근", "bc-work", st.work, x => x.e ? shortLabel(x.e) : "")}
+        ${col("출장·외부활동", "bc-trip", st.trip, x => shortLabel(x.e))}
+        ${col("휴가", "bc-leave", st.leave, x => x.e.category)}
       </div>`}
     </div>
 
@@ -498,7 +506,7 @@ function renderDashboard() {
         <thead><tr><th>상태</th><th>신청자</th><th>유형</th><th>기간</th><th class="num">차감</th><th>상세</th></tr></thead>
         <tbody>${recent.map(e => `<tr>
           <td>${pill("s-" + entryStatus(e), entryStatus(e))}</td>
-          <td><b>${esc(e.name)}</b></td>
+          <td>${who(e.name)}</td>
           <td>${pill("t-" + e.category, e.category)}</td>
           <td>${fmtPeriod(e)}</td>
           <td class="num">${e.deduct ? fmtDays(e.deduct) : "-"}</td>
@@ -533,7 +541,7 @@ function renderNotices() {
       <button class="btn-pri" style="margin-left:auto" id="btnNewNotice">+ 공지 작성</button></div>
     <div class="card">
       ${list.length ? list.map(n => `
-        <div class="notice-item">
+        <div class="notice-item ${n.important ? "is-imp" : n.slack ? "is-slack" : ""}">
           <div class="t">${n.important ? pill("imp", "중요") : ""}${slackTag(n)} ${esc(n.title)}
             ${!n.slack && canEdit(n) ? `<span class="acts"><button class="btn-sm" data-edit="${esc(n.id)}">수정</button></span>` : ""}
             ${n.permalink ? `<span class="acts"><a class="link small" href="${esc(n.permalink)}" target="_blank" rel="noopener">Slack에서 보기 →</a></span>` : ""}</div>
@@ -704,7 +712,7 @@ function renderTasks() {
         <div class="card stat"><div class="dot c-amber">★</div><div><div class="num">${w.items.filter(i => i.key).length}</div><div class="lbl">핵심업무 지정</div></div></div>
       </div>
       ${items.length ? items.map(it => `
-        <div class="card task-card">
+        <div class="card task-card area-card ${areaCls(it.area)}">
           <div class="task-head">
             <h3>${esc(it.area)}</h3>
             ${reviewMark(it)}
@@ -730,7 +738,7 @@ function renderTasks() {
       </div>
       <div class="card"><div class="timeline">
         ${rows.filter(({ it }) => !q || (it.plan + it.progress).toLowerCase().includes(q.toLowerCase())).map(({ w, it }) => `
-          <div class="tl-item">
+          <div class="tl-item ${areaCls(it.area)}">
             <div class="tl-h">${esc(w.plan_label)} ${w.status ? pill("s-" + w.status, w.status) : ""}
               <span class="muted small">${esc(it.author || "")}</span></div>
             <div class="txt">${formatTask(it.plan, q)}</div>
@@ -1082,7 +1090,7 @@ function personalView() {
       <thead><tr>${showWeek ? "<th>주차</th>" : ""}${showOwner ? "<th>담당</th>" : ""}<th>우선</th><th style="width:38%">업무</th><th>상태</th><th>시작 ~ 완료예정</th><th>완료일</th><th>결과/메모</th></tr></thead>
       <tbody>${tasks.map(t => `<tr>
         ${showWeek ? `<td class="small nowrap">${esc(t.week.title)}</td>` : ""}
-        ${showOwner ? `<td><b>${esc(t.owner)}</b></td>` : ""}
+        ${showOwner ? `<td>${who(t.owner)}</td>` : ""}
         <td>${stars(t.priority)}</td>
         <td><div class="pt-name">${hl(t.name || "(업무명 없음)")}${canEdit(t) ? ` <button class="btn-sm" data-tedit="${t.wid}">수정</button>` : ""}</div>${t.content ? `<div class="pt-desc">${hl(t.content)}</div>` : ""}</td>
         <td class="nowrap">${pill(P_STATUS_CLS[t.status] || "t-기타", t.status)}${isOverdue(t) ? " " + pill("imp", "기한초과") : ""}</td>
@@ -1105,9 +1113,11 @@ function personalView() {
     main = ownerOrder(new Set(list.map(t => t.owner))).map(o => {
       const ts = list.filter(t => t.owner === o);
       const m = state.data.members.find(x => x.name === o);
+      const done = ts.filter(t => t.status === "완료").length;
       return `<div class="card task-card">
-        <div class="card-h"><h2>${esc(o)}</h2><span class="sub">${esc(m?.position || "")}</span>
-          <span class="right small muted">${ts.length}건 · 진행 ${ts.filter(t => t.status === "진행 중").length} · 완료 ${ts.filter(t => t.status === "완료").length}</span></div>
+        <div class="card-h owner-h">${avatar(o, "lg")}<div><h2>${esc(o)}</h2><span class="sub">${esc(m?.position || "")}</span></div>
+          <div class="right owner-prog"><span class="small muted">${ts.length}건 · 진행 ${ts.filter(t => t.status === "진행 중").length} · 완료 ${done}</span>
+            <div class="bar" title="완료 ${done}/${ts.length}"><i class="u" style="width:${Math.round(done / ts.length * 100)}%"></i></div></div></div>
         ${table(ts, false, allWeeks)}</div>`;
     }).join("");
   }
@@ -1226,7 +1236,7 @@ function renderPcLog() {
         <td class="nowrap">${fmtDT(r.start_at)}</td>
         <td class="nowrap">${r.end_at ? fmtDT(r.end_at, r.start_at) : pill("ps-run", "사용 중")}</td>
         <td class="nowrap small">${r.end_at ? pcDuration(r) : "-"}</td>
-        <td><b>${esc(r.user_name)}</b></td>
+        <td>${who(r.user_name)}</td>
         <td>${esc(r.purpose)}</td>
         <td class="nowrap">${canEdit(r) ? `${r.end_at ? "" : `<button class="btn-sm" data-pcend="${r.id}">사용 종료</button> `}<button class="btn-sm" data-pcedit="${r.id}">수정</button>` : ""}</td>
       </tr>`).join("") : `<tr><td colspan="6" class="empty">기록이 없습니다.</td></tr>`}</tbody>
@@ -1334,7 +1344,7 @@ function leaveList() {
       <thead><tr><th>상태</th><th>이름</th><th>유형</th><th>기간</th><th class="num">근무일</th><th class="num">연차 차감</th><th>구분(원문)</th><th>비고</th><th></th></tr></thead>
       <tbody>${list.map(e => `<tr>
         <td>${pill("s-" + entryStatus(e), entryStatus(e))}</td>
-        <td><b>${esc(e.name)}</b>${webTag(e)}</td>
+        <td>${who(e.name)}${webTag(e)}</td>
         <td>${pill("t-" + e.category, e.category)}${e.trip && e.category !== "출장" ? " " + pill("t-출장", "외부") : ""}</td>
         <td>${fmtPeriod(e)}</td>
         <td class="num">${e.workdays}일</td>
@@ -1491,7 +1501,7 @@ function renderDuty() {
     ${draft ? `<p class="small muted" style="margin:0 0 10px">칸을 눌러 바로 입력하세요(줄바꿈 Enter). 엑셀에서 범위를 복사해 칸에 붙여넣으면 그 칸부터 채워집니다. 담당자는 팀원 명단에서 자동으로 채워집니다.</p>` : ""}
     <div class="card duty-card"><div class="table-wrap"><table class="duty-table ${draft ? "editing" : ""}">
       <thead><tr><th class="who-h">담당자</th>${DUTY_AREAS.map((a, j) => `<th class="area a${j}"><span class="area-name">${a}</span><span class="area-n">${count(j)}명</span></th>`).join("")}</tr></thead>
-      <tbody>${rows.map((row, r) => `<tr><th class="who"><span class="avatar">${esc(row[0].slice(-2))}</span><span class="who-t"><b>${esc(row[0])}</b>${pos[row[0]] ? `<small>${esc(pos[row[0]])}</small>` : ""}</span></th>${DUTY_AREAS.map((_, j) => `<td class="a${j}">${draft ? cellEdit(row[j + 1], r, j + 1) : cellList(row[j + 1])}</td>`).join("")}</tr>`).join("")
+      <tbody>${rows.map((row, r) => `<tr><th class="who">${avatar(row[0], "lg")}<span class="who-t"><b>${esc(row[0])}</b>${pos[row[0]] ? `<small>${esc(pos[row[0]])}</small>` : ""}</span></th>${DUTY_AREAS.map((_, j) => `<td class="a${j}">${draft ? cellEdit(row[j + 1], r, j + 1) : cellList(row[j + 1])}</td>`).join("")}</tr>`).join("")
         || `<tr><td colspan="${DUTY_AREAS.length + 1}" class="empty">팀원 명단이 없습니다.</td></tr>`}</tbody>
     </table></div></div>`;
 
@@ -1617,11 +1627,11 @@ function renderReviewList() {
       <select id="rvField"><option value="">전체 분야</option>${opts([...new Set(rows.map(r => r.field).filter(Boolean))].sort().map(x => [x, x]), f.field)}</select>
       <select id="rvWho"><option value="">전체 검토자</option>${opts([...people.map(p => [p, p]), ["_none", "미배정"]], f.who)}</select>
       <input id="rvQ" placeholder="사업명·부처·메모로 찾기" value="${esc(f.q)}" style="margin-left:auto;min-width:220px">
+      <button class="btn-sec" id="btnRvXlsx" ${list.length ? "" : "disabled"} title="지금 걸러진 목록을 화면 순서대로 내려받습니다">⬇ 엑셀 다운로드</button>
     </div>
     <div class="toolbar">
       <div class="seg wrap">${chip("rs", "_open", `진행 중 ${active.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}${chip("rs", "_nofinal", `최종(팀장) 전 ${base.filter(noFinal).length}`)}</div>
       <span class="muted small" style="margin-left:auto">${list.length}건</span>
-      <button class="btn-sec" id="btnRvXlsx" ${list.length ? "" : "disabled"} title="지금 걸러진 목록을 화면 순서대로 내려받습니다">⬇ 엑셀 다운로드</button>
     </div>
     <div class="card"><div class="table-wrap rv-wrap"><table class="rvtable">
       <thead><tr>${RV_COLS.map(([k, l]) => `<th><button class="th-sort" data-sort="${k}">${l}${sk === k ? (dir > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("")}<th></th></tr></thead>

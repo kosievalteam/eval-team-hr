@@ -329,13 +329,14 @@ dialog::backdrop { background: rgba(20, 26, 38, .45); }
 /* 영역 제목: 위쪽 색띠 + 연한 배경 + 담당 인원 */
 .duty-table th.area { border-top: 4px solid var(--ac); background: var(--as); color: var(--ac); font-size: 14px; font-weight: 800; vertical-align: middle; }
 .duty-table th.area .area-n { float: right; font-size: 11px; font-weight: 600; background: #fff; border-radius: 10px; padding: 2px 8px; margin-top: 1px; }
-.duty-table .a0 { --ac: var(--pri); --as: var(--pri-soft); }
-.duty-table .a1 { --ac: #00838f; --as: #e3f4f5; }
-.duty-table .a2 { --ac: var(--amber); --as: var(--amber-soft); }
-.duty-table .a3 { --ac: var(--violet); --as: var(--violet-soft); }
+.a0 { --ac: var(--pri); --as: var(--pri-soft); }
+.a1 { --ac: #00838f; --as: #e3f4f5; }
+.a2 { --ac: var(--amber); --as: var(--amber-soft); }
+.a3 { --ac: var(--violet); --as: var(--violet-soft); }
+.a-etc { --ac: #5b6475; --as: var(--gray-soft); }
 /* 담당자 칸: 이름 동그라미 + 이름·직위 */
 .duty-table th.who { background: #fafbfd; color: var(--text); font-weight: 400; vertical-align: middle; }
-.duty-table .avatar { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: var(--side); color: #fff; font-size: 11px; font-weight: 700; vertical-align: middle; margin-right: 8px; }
+.duty-table th.who .av { vertical-align: middle; margin-right: 8px; }
 .duty-table .who-t { display: inline-block; vertical-align: middle; }
 .duty-table .who-t b { display: block; font-size: 14px; }
 .duty-table .who-t small { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
@@ -351,3 +352,103 @@ dialog::backdrop { background: rgba(20, 26, 38, .45); }
 .duty-table.editing td { padding: 0; }
 .duty-table .dc { min-height: 64px; padding: 12px 14px; outline: none; white-space: pre-wrap; }
 .duty-table .dc:focus { background: #fff; box-shadow: inset 0 0 0 2px var(--ac); }
+
+/* ------------------------------------------------------------ 디자인 보강: 업무분장 화면의 모양(색띠·동그라미·연한 영역색)을 모든 화면에 */
+:root { --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 2px 8px rgba(16, 24, 40, .05); }
+.topbar h1 { font-weight: 800; letter-spacing: -.02em; }
+.card { box-shadow: var(--shadow); border-color: #e7eaf0; }
+.card-h h2 { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+.card-h h2::before { content: ""; width: 4px; height: 16px; border-radius: 2px; background: var(--pri); }
+
+/* 통계 상자: 위쪽 색띠(아이콘 색과 같게) */
+.stat { border-top: 3px solid var(--sc, var(--line)); }
+.stat:has(.c-blue) { --sc: var(--pri); }
+.stat:has(.c-green) { --sc: var(--green); }
+.stat:has(.c-amber) { --sc: var(--amber); }
+.stat:has(.c-red) { --sc: var(--red); }
+.stat:has(.c-violet) { --sc: var(--violet); }
+.stat .dot { width: 48px; height: 48px; border-radius: 14px; }
+.stat .num { font-size: 28px; letter-spacing: -.02em; }
+
+/* 버튼·입력칸 */
+.btn-pri { font-weight: 700; box-shadow: 0 1px 2px rgba(59, 108, 246, .35); }
+.btn-sec { font-weight: 600; }
+.toolbar select:focus, .toolbar input:focus, .datenav input:focus { outline: none; border-color: var(--pri); box-shadow: 0 0 0 3px var(--pri-soft); }
+/* 묶음 버튼(전체·예정·진행중 …): 회색 판 위에 고른 것만 흰 버튼 */
+.seg { background: #eceff4; padding: 3px; border-radius: 10px; gap: 2px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font-weight: 600; padding: 5px 12px; border-radius: 8px; }
+.seg button:hover { color: var(--text); background: rgba(255, 255, 255, .65); }
+.seg button.on { background: #fff; color: var(--pri); box-shadow: 0 1px 3px rgba(16, 24, 40, .14); }
+.tabs button { font-size: 15px; }
+
+/* 표 */
+th { color: #5b6475; font-weight: 700; background: #f6f8fb; }
+tbody tr:hover > td { background: #f8faff; }
+
+/* 사람 동그라미 */
+.av { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--side); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: -.03em; }
+.av.lg { width: 36px; height: 36px; font-size: 11px; }
+.who-cell { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+
+/* 대시보드 근무현황: 업무분장 열 제목처럼 색띠 패널 */
+.board-col { border: 1px solid var(--line); border-top: 4px solid var(--ac); border-radius: 12px; overflow: hidden; background: #fff; }
+.board-col h3 { margin: 0; padding: 10px 14px; background: var(--as); color: var(--ac); font-size: 14px; font-weight: 800; justify-content: space-between; }
+.board-col .bc-n { background: #fff; border-radius: 10px; padding: 1px 9px; font-size: 11px; font-weight: 700; }
+.board-col .chips { padding: 12px 14px 14px; }
+.board-col .empty { padding: 0; }
+.bc-work { --ac: var(--green); --as: var(--green-soft); }
+.bc-trip { --ac: #00838f; --as: #e3f4f5; }
+.bc-leave { --ac: var(--amber); --as: var(--amber-soft); }
+.chip { background: #fff; border: 1px solid var(--line); padding: 3px 11px 3px 3px; }
+.chip .av { width: 22px; height: 22px; font-size: 9px; }
+
+/* 달력 */
+.cal .dow { font-weight: 700; color: #5b6475; background: #f6f8fb; }
+.cal .dow:first-child { color: var(--red); }
+.cal .dow:nth-child(7) { color: var(--pri); }
+.cal .day .dn { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; }
+.cal .day.today .dn { background: var(--pri); color: #fff; }
+.cal .ev { border-left: 3px solid currentColor; font-weight: 600; padding: 2px 6px; }
+
+/* 공지사항: 왼쪽 색 막대(일반 파랑 · 중요 빨강 · Slack 보라) */
+.notice-item { position: relative; padding: 14px 14px 14px 20px; border-radius: 10px; border-bottom: 0; }
+.notice-item + .notice-item { margin-top: 6px; }
+.notice-item::before { content: ""; position: absolute; left: 4px; top: 14px; bottom: 14px; width: 4px; border-radius: 2px; background: var(--pri); }
+.notice-item:hover { background: #f8faff; }
+.notice-item.is-imp { background: #fff7f8; }
+.notice-item.is-imp::before { background: var(--red); }
+.notice-item.is-slack::before { background: var(--violet); }
+.notice-item .t { font-size: 15px; }
+.notice-item .b { background: #f8f9fc; border-radius: 8px; padding: 10px 12px; }
+
+/* 팀주간업무: 업무영역 색(업무분장과 같은 색) */
+.area-card { border-top: 4px solid var(--ac); }
+.area-card .task-head h3 { color: var(--ac); font-size: 17px; font-weight: 800; }
+.area-card .task-col h4 { display: inline-block; background: var(--as); color: var(--ac); padding: 2px 10px; border-radius: 999px; font-weight: 700; }
+.area-card .task-col .txt { background: #fff; }
+.area-card .fx-sub { color: var(--ac); }
+.keybox { background: var(--amber-soft); border-left: 4px solid var(--amber); }
+.keybox b { color: var(--amber); }
+.tl-item::before { background: var(--ac, var(--pri)); box-shadow: 0 0 0 1px var(--ac, var(--pri)); }
+
+/* 개인별업무: 담당자 카드 머리 */
+.owner-h { gap: 12px; }
+.owner-h h2 { font-size: 17px; }
+.owner-h h2::before { display: none; }
+.owner-h .sub { display: block; }
+.owner-prog { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.owner-prog .bar { width: 180px; }
+.owner-prog .bar i { background: var(--green); }
+
+/* 좁은 화면: 카드 머리·상단 날짜가 줄바꿈 없이 화면 밖으로 밀리던 문제 */
+@media (max-width: 760px) {
+  .topbar-right { display: none; }
+  .card-h { flex-wrap: wrap; }
+  .card-h .right { margin-left: 0; }
+  .owner-h .right { margin-left: auto; }
+  .owner-prog .bar { width: 120px; }
+  .stats { gap: 10px; }
+  .stat { padding: 14px; gap: 10px; }
+  .stat .dot { width: 38px; height: 38px; }
+}
