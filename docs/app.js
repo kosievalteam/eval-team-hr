@@ -97,7 +97,8 @@ function loginGate(message) {
     let mode = "login";
     const draw = msg => {
       gate.innerHTML = `<form class="gate-box">
-        <div class="brand-mark" style="display:flex;width:fit-content;margin:0 auto 14px;align-items:center">정책평가팀<small>HR 관리</small></div>
+        <div class="brand-logo"><img src="kosi_logo.png" alt="KOSI" onerror="this.replaceWith('KOSI')"></div>
+        <h2>정책평가팀 HR 관리</h2>
         ${mode === "signup" ? `<p class="muted small">처음 쓰는 경우 @kosi.re.kr 이메일로 가입하세요.</p>` : ""}
         <input type="email" name="email" placeholder="이메일 (@kosi.re.kr)" autocomplete="username" required>
         <input type="password" name="pw" placeholder="비밀번호${mode === "signup" ? " (6자 이상)" : ""}" autocomplete="${mode === "login" ? "current-password" : "new-password"}" minlength="6" required>
@@ -236,7 +237,8 @@ function merge(d, web) {
   web.weekly.forEach(r => {
     const w = weekBySheet[r.sheet];
     if (w) w.items.push({ area: r.area, progress: r.progress, plan: r.plan, key: r.key, author: r.author,
-      written: r.written || r.updated_at.slice(5, 10).replace("-", "/"), reviewed: r.reviewed, wid: r.id, created_by: r.created_by });
+      written: r.written || r.updated_at.slice(5, 10).replace("-", "/"), reviewed: r.reviewed, stats: r.stats || null,
+      wid: r.id, created_by: r.created_by });
   });
 
   const pBySheet = Object.fromEntries(d.personal.map(w => [w.sheet, w]));
@@ -689,6 +691,7 @@ function renderTasks() {
             <div class="task-col"><h4>${esc(w.progress_label)}</h4><div class="txt">${formatTask(it.progress, q)}</div></div>
             <div class="task-col"><h4>${esc(w.plan_label)}</h4><div class="txt">${formatTask(it.plan, q)}</div></div>
           </div>
+          ${isReviewArea(it.area) && it.stats ? statsTable(it.stats) : ""}
           ${it.key ? `<div class="keybox"><b>★ 핵심 업무 계획</b>${formatTask(it.key, q)}</div>` : ""}
         </div>`).join("") : `<div class="card empty">검색 결과가 없습니다.</div>`}`;
   } else {
@@ -746,27 +749,51 @@ function renderTasks() {
   };
 }
 
+// '사전협의' 업무영역에는 <사전협의 진행현황> 표(광역지자체) 숫자를 주차별로 직접 입력한다. 합계는 계산.
+const REVIEW_STATS = [["wait", "접수대기"], ["reject", "반려"], ["kosi", "중기연 검토"], ["office", "지방청 검토"], ["done", "협의완료"]];
+const isReviewArea = a => /사전협의/.test(a || "");
+const statsTotal = s => REVIEW_STATS.reduce((n, [k]) => n + (Number(s?.[k]) || 0), 0);
+function statsTable(s) {
+  return `<div class="table-wrap mt"><table class="stats-table">
+    <thead><tr><th>구분</th>${REVIEW_STATS.map(([, l]) => `<th class="num">${l}</th>`).join("")}<th class="num">합계(누적)</th></tr></thead>
+    <tbody><tr><td>광역지자체</td>${REVIEW_STATS.map(([k]) => `<td class="num">${s[k] ?? "-"}</td>`).join("")}<td class="num"><b>${statsTotal(s)}</b></td></tr></tbody>
+  </table></div>`;
+}
+
 // 주간업무계획은 팀 공동 문서라 팀원 누구나 고칠 수 있다. 삭제는 작성자·관리자, 팀장 검토 표시는 관리자만.
 function openWeekly(w, it) {
   const members = state.data.members.map(m => m.name);
   const authors = [...new Set([...members, it?.author].filter(Boolean))];
+  const withStats = isReviewArea(it?.area);
+  const sf = REVIEW_STATS.map(([k, l]) => ({ name: "st_" + k, label: l, type: "number" }));
   openForm({
     title: `${it ? "업무 수정" : "업무 추가"} · ${w.title}`,
-    data: it || { author: state.user.name },
+    data: it ? { ...it, ...Object.fromEntries(REVIEW_STATS.map(([k]) => ["st_" + k, it.stats?.[k] ?? ""])) } : { author: state.user.name },
     fields: [
       { name: "area", label: "업무영역", required: true, list: [...new Set(w.items.map(i => i.area))] },
       { name: "progress", label: w.progress_label, type: "textarea", rows: 6, help: "줄 앞에 - 또는 ○를 쓰면 항목, *는 세부항목으로 표시됩니다." },
       { name: "plan", label: w.plan_label, type: "textarea", rows: 6 },
       { name: "key", label: "핵심 업무 계획 (선택)", type: "textarea", rows: 2 },
+      ...(withStats ? [{ type: "note", help: "<사전협의 진행현황> 광역지자체 건수 (합계는 자동 계산)" }, [sf[0], sf[1]], [sf[2], sf[3]], sf[4]] : []),
       { name: "author", label: "작성자", type: "select", options: ["", ...authors].map(a => [a, a || "(미작성)"]) },
       ...(state.user.admin && w.status === "최종" ? [{ name: "reviewed", label: "팀장 검토 완료", type: "checkbox" }] : []),
     ],
-    onSave: v => {
+    onSave: async v => {
       const row = { area: v.area, progress: v.progress, plan: v.plan, key: v.key, author: v.author,
         written: state.data.today.slice(5).replace("-", "/") };
       if ("reviewed" in v) row.reviewed = v.reviewed;
-      return it ? must(sb.from("hr_weekly").update(row).eq("id", it.wid))
-        : must(sb.from("hr_weekly").insert({ ...row, sheet: w.sheet }));
+      if (withStats) row.stats = Object.fromEntries(REVIEW_STATS.map(([k]) => [k, v["st_" + k] === "" ? null : Number(v["st_" + k])]));
+      const save = r => it ? must(sb.from("hr_weekly").update(r).eq("id", it.wid))
+        : must(sb.from("hr_weekly").insert({ ...r, sheet: w.sheet }));
+      try {
+        await save(row);
+      } catch (err) {
+        // 진행현황 칸(hr_weekly.stats)이 아직 DB에 없으면 나머지만 저장한다(supabase/2026-11-04_weekly_stats.sql)
+        if (!("stats" in row) || !/stats/.test(err.message)) throw err;
+        delete row.stats;
+        await save(row);
+        alert("업무 내용은 저장했지만, 진행현황 숫자 칸이 아직 DB에 없어 숫자는 저장하지 못했습니다. 관리자에게 알려 주세요.");
+      }
     },
     onDelete: it && canEdit(it) && (() => must(sb.from("hr_weekly").delete().eq("id", it.wid))),
   });
@@ -952,7 +979,8 @@ function renderPcLog() {
           `<option value="${m}" ${m === state.pcMonth ? "selected" : ""}>${m.replace("-", "년 ")}월</option>`).join("")}</select>
       <span class="muted">${list.length}건</span>
       ${inUse.length ? `<span class="small">${pill("ps-run", "사용 중")} ${inUse.map(r => esc(r.user_name)).join(", ")}</span>` : ""}
-      <button class="btn-pri" style="margin-left:auto" id="btnNewPc">+ 사용 기록</button>
+      <button class="btn-sec" style="margin-left:auto" id="btnPcXlsx" ${list.length ? "" : "disabled"}>⬇ 엑셀 다운로드</button>
+      <button class="btn-pri" id="btnNewPc">+ 사용 기록</button>
     </div>
     <div class="card"><div class="table-wrap"><table>
       <thead><tr><th>사용시작</th><th>사용종료</th><th>사용시간</th><th>사용자</th><th style="width:40%">사용용도</th><th></th></tr></thead>
@@ -967,6 +995,17 @@ function renderPcLog() {
     </table></div></div>`;
   $("#pcMonth").onchange = ev => { state.pcMonth = ev.target.value; renderPcLog(); };
   $("#btnNewPc").onclick = () => openPcLog(null);
+  $("#btnPcXlsx").onclick = async ev => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    try {
+      await downloadXlsx(`공용PC_사용대장_${state.pcMonth || "전체"}.xlsx`, "사용대장",
+        ["사용시작", "사용종료", "사용시간", "사용자", "사용용도"],
+        [...list].reverse().map(r => [localDT(r.start_at).replace("T", " "), r.end_at ? localDT(r.end_at).replace("T", " ") : "사용 중",
+          r.end_at ? pcDuration(r) : "", r.user_name, r.purpose]));
+    } catch (err) { alert(`엑셀 파일을 만들지 못했습니다. (${err.message || err})`); }
+    btn.disabled = false;
+  };
   $("#page-pclog").querySelectorAll("[data-pcedit]").forEach(b => b.onclick = () =>
     openPcLog(state.data.pclog.find(r => r.id === Number(b.dataset.pcedit))));
   $("#page-pclog").querySelectorAll("[data-pcend]").forEach(b => b.onclick = async () => {
@@ -977,6 +1016,26 @@ function renderPcLog() {
     } catch (err) { alert(err.message || err); b.disabled = false; }
   });
 }
+// SheetJS는 엑셀 다운로드를 누를 때만 불러온다.
+let xlsxLib;
+function loadXlsx() {
+  return xlsxLib ||= new Promise((ok, fail) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    s.onload = () => ok(window.XLSX);
+    s.onerror = () => { xlsxLib = null; fail(new Error("엑셀 라이브러리를 불러오지 못했습니다")); };
+    document.head.appendChild(s);
+  });
+}
+async function downloadXlsx(filename, sheet, header, rows) {
+  const XLSX = await loadXlsx();
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws["!cols"] = header.map((h, i) => ({ wch: Math.min(60, Math.max(h.length * 2, ...rows.map(r => String(r[i] ?? "").length * 1.6)) + 2) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheet);
+  XLSX.writeFile(wb, filename);
+}
+
 function openPcLog(r) {
   openForm({
     title: r ? "공용 PC 사용 기록 수정" : "공용 PC 사용 기록",
