@@ -673,8 +673,8 @@ function renderTasks() {
           // 버튼은 최종 주차에서 늘 보이고, 팀장 검토가 모두 끝나야 눌린다
           const ready = w.items.length && reviewed === w.items.length;
           const tip = ready ? "한글(HWPX) 양식 그대로 내려받기" : `팀장 검토가 모두 끝나면 내려받을 수 있습니다 (${reviewed}/${w.items.length})`;
-          return `<button class="btn-sm" id="btnHwpPlan" title="${tip}" ${ready ? "" : "disabled"}>⬇ 주간업무계획(한글)</button>
-            <button class="btn-sm" id="btnHwpKey" title="${tip}" ${ready ? "" : "disabled"}>⬇ 핵심업무계획(한글)</button>
+          return `<button class="btn-sm btn-hwp" id="btnHwpPlan" title="${tip}" ${ready ? "" : "disabled"}>⬇ 주간업무계획(한글)</button>
+            <button class="btn-sm btn-hwp key" id="btnHwpKey" title="${tip}" ${ready ? "" : "disabled"}>⬇ 핵심업무계획(한글)</button>
             ${ready ? "" : `<span class="small muted">팀장 검토 ${reviewed}/${w.items.length} 완료 후 다운로드</span>`}`;
         })() : ""}
         <input id="taskQ" placeholder="검색 (업무·키워드·작성자)" value="${esc(state.taskQuery)}" style="margin-left:auto;min-width:220px">

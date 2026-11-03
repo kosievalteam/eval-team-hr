@@ -314,3 +314,8 @@ dialog::backdrop { background: rgba(20, 26, 38, .45); }
   .cal .ev { font-size: 10px; }
 }
 .btn-sm:disabled { opacity: .45; cursor: not-allowed; }
+/* 주간업무 한글 내려받기: 눈에 띄게 색을 채운 버튼 (계획 = 파랑, 핵심 = KOSI 청록) */
+.btn-sm.btn-hwp { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 700; padding: 6px 12px; }
+.btn-sm.btn-hwp.key { background: #00666f; border-color: #00666f; }
+.btn-sm.btn-hwp:not(:disabled):hover { filter: brightness(1.12); }
+.btn-sm.btn-hwp:disabled { opacity: .4; }
