@@ -50,6 +50,10 @@ def main():
                 raise SystemExit(1)
         return res.returncode == 0
 
+    # 작업 스케줄러가 절전에서 깨워 실행하므로, 끝날 때까지 다시 절전에 들지 않게 한다(끝나면 자동 해제)
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)  # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
     write(f"== 협의검토 갱신({mode}) ==")
     for name, script, required in STEPS[mode]:
         run(name, [script], collector, required)
