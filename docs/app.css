@@ -313,3 +313,4 @@ dialog::backdrop { background: rgba(20, 26, 38, .45); }
   .cal .day { min-height: 64px; }
   .cal .ev { font-size: 10px; }
 }
+.btn-sm:disabled { opacity: .45; cursor: not-allowed; }
