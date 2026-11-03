@@ -1062,7 +1062,7 @@ function openPcLog(r) {
 function renderLeave() {
   const el = $("#page-leave");
   const tabs = `<div class="tabs">
-    ${[["list", "근태등록"], ["cal", "휴가 달력"]].map(([k, t]) =>
+    ${[["list", "근태등록"], ["cal", "근무 현황"]].map(([k, t]) =>
       `<button data-tab="${k}" class="${state.leaveTab === k ? "active" : ""}">${t}</button>`).join("")}</div>`;
   const body = ({ list: leaveList, cal: leaveCalendar }[state.leaveTab] || leaveList)();
   el.innerHTML = tabs + body;
@@ -1090,7 +1090,7 @@ function leaveList() {
       ${sel("fMonth", "전체 월", months, f.month, m => `${Number(m.slice(5))}월`)}
       <div class="seg">${["all", "예정", "진행중", "완료"].map(p => `<button data-period="${p}" class="${f.period === p ? "on" : ""}">${p === "all" ? "전체" : p}</button>`).join("")}</div>
       <span class="muted small" style="margin-left:auto">${list.length}건 · 연차 차감 합계 ${fmtDays(sum)}</span>
-      <button class="btn-pri" id="btnNewLeave">+ 휴가 등록</button>
+      <button class="btn-pri" id="btnNewLeave">+ 근태 등록</button>
     </div>
     <div class="card"><div class="table-wrap"><table>
       <thead><tr><th>상태</th><th>이름</th><th>유형</th><th>기간</th><th class="num">근무일</th><th class="num">연차 차감</th><th>구분(원문)</th><th>비고</th><th></th></tr></thead>
@@ -1129,7 +1129,7 @@ function leaveCalendar(inCard = false) {
   const grid = `<div class="cal">${DOW.map(x => `<div class="dow">${x}</div>`).join("")}${cells}</div>`;
   return `
     <div class="toolbar">
-      ${inCard ? `<h2 style="font-size:16px;margin:0 8px 0 0">휴가 달력</h2>` : ""}
+      ${inCard ? `<h2 style="font-size:16px;margin:0 8px 0 0">근무 현황</h2>` : ""}
       <button class="btn-sec" data-cal="-1">◀</button>
       <b style="font-size:16px;min-width:110px;text-align:center">${y}년 ${m}월</b>
       <button class="btn-sec" data-cal="1">▶</button>
@@ -1169,7 +1169,7 @@ function openLeave(e) {
   const m = (e?.kind || "").match(/^([^(]+?)\s*(?:\((.*)\))?$/) || [];
   const kind = LEAVE_KINDS.includes(m[1]) ? m[1] : (e ? "" : "연차");
   openForm({
-    title: e ? "휴가 수정" : "휴가 등록",
+    title: e ? "근태 수정" : "근태 등록",
     data: e ? { name: e.name, start: e.start, end: e.end, kind, detail: kind ? m[2] || "" : e.kind, note: e.note }
       : { start: state.data.today, end: state.data.today, kind },
     fields: [
