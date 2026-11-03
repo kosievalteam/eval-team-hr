@@ -50,6 +50,8 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 - 주말·공휴일은 기간 계산에서 제외
 
 ## 웹 배포
+- 주소: GitHub Pages(https://kosievalteam.github.io/eval-team-hr/)와 Vercel(프로덕션) 두 곳. 둘 다 `docs/`를 그대로 서비스합니다.
+  - Vercel은 GitHub 저장소 연결 방식: main에 푸시되면 자동으로 프로덕션 배포(`vercel.json`: 빌드 없음, 출력 폴더 `docs`).
 - `배포.bat` 실행 → 엑셀을 읽어 Supabase(`hr_snapshot`)에 올리고, 화면 파일이 바뀌었으면 `docs/`를 GitHub에 푸시합니다.
   - 데이터만 바뀐 경우 푸시 없이 바로 웹에 반영됩니다.
   - 업로드는 `.secret/hr_upload_token.txt` 토큰이 있어야 됩니다(`.gitignore`로 제외, 이 PC에만 보관).
