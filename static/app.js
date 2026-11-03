@@ -655,6 +655,11 @@ function renderTasks() {
     const items = w.items.filter(it => !q || [it.area, it.progress, it.plan, it.key, it.author].join("\n").toLowerCase().includes(q.toLowerCase()));
     const written = w.items.filter(it => it.author).length;
     const reviewed = w.items.filter(it => it.reviewed).length;
+    // 팀장 검토는 '최종' 주차에서 관리자(팀장)가 업무영역별로 체크한다.
+    const final = w.status === "최종", lead = state.user.admin;
+    const reviewMark = it => !final ? ""
+      : lead ? `<label class="chk review-chk"><input type="checkbox" data-review="${it.wid}" ${it.reviewed ? "checked" : ""}> 팀장 검토</label>`
+      : it.reviewed ? pill("s-최종", "팀장 검토 ✓") : pill("s-완료", "검토 전");
     body = `
       <div class="toolbar">
         <button class="btn-sec" data-wk="1" ${state.weekIdx >= weeks.length - 1 ? "disabled" : ""}>◀ 이전 주</button>
@@ -662,6 +667,7 @@ function renderTasks() {
         <button class="btn-sec" data-wk="-1" ${state.weekIdx === 0 ? "disabled" : ""}>다음 주 ▶</button>
         ${w.status ? pill("s-" + w.status, w.status) : ""}
         ${canEditWeek(w) ? `<button class="btn-sm" id="btnWeekSet">주차 설정</button>` : ""}
+        ${final && lead && reviewed < w.items.length ? `<button class="btn-sm" id="btnReviewAll">✓ 전체 검토 완료</button>` : ""}
         <input id="taskQ" placeholder="검색 (업무·키워드·작성자)" value="${esc(state.taskQuery)}" style="margin-left:auto;min-width:220px">
         <button class="btn-sec" id="btnNewWeek">+ 새 주차</button>
         <button class="btn-pri" id="btnNewWeekly">+ 업무 추가</button>
@@ -669,14 +675,14 @@ function renderTasks() {
       <div class="stats" style="margin-bottom:16px">
         <div class="card stat"><div class="dot c-blue">☰</div><div><div class="num">${w.items.length}</div><div class="lbl">업무영역</div></div></div>
         <div class="card stat"><div class="dot c-green">✎</div><div><div class="num">${written}/${w.items.length}</div><div class="lbl">작성 완료</div></div></div>
-        <div class="card stat"><div class="dot c-violet">✓</div><div><div class="num">${reviewed}/${w.items.length}</div><div class="lbl">팀장 검토</div></div></div>
+        <div class="card stat"><div class="dot c-violet">✓</div><div><div class="num">${final ? `${reviewed}/${w.items.length}` : "-"}</div><div class="lbl">팀장 검토${final ? "" : " (최종 후)"}</div></div></div>
         <div class="card stat"><div class="dot c-amber">★</div><div><div class="num">${w.items.filter(i => i.key).length}</div><div class="lbl">핵심업무 지정</div></div></div>
       </div>
       ${items.length ? items.map(it => `
         <div class="card task-card">
           <div class="task-head">
             <h3>${esc(it.area)}</h3>
-            ${it.reviewed ? pill("s-최종", "팀장 검토 ✓") : pill("s-완료", "검토 전")}
+            ${reviewMark(it)}
             <span class="who">${it.author ? `작성 ${esc(it.author)}${it.written ? " · " + esc(it.written) : ""}` : "미작성"}</span>
             <button class="btn-sm" data-wedit="${it.wid}">수정</button>
           </div>
@@ -713,6 +719,20 @@ function renderTasks() {
   const nw = $("#btnNewWeekly"); if (nw) nw.onclick = () => openWeekly(weeks[state.weekIdx], null);
   const nk = $("#btnNewWeek"); if (nk) nk.onclick = () => openNewWeek("plan");
   const wsb = $("#btnWeekSet"); if (wsb) wsb.onclick = () => openWeekSettings("plan", weeks[state.weekIdx]);
+  const setReviewed = async (ids, on, ctl) => {
+    ctl.disabled = true;
+    try {
+      await must(sb.from("hr_weekly").update({ reviewed: on }).in("id", ids));
+      await load();
+    } catch (err) { alert(err.message || err); ctl.disabled = false; }
+  };
+  el.querySelectorAll("[data-review]").forEach(c => c.onchange = () => setReviewed([Number(c.dataset.review)], c.checked, c));
+  const ra = $("#btnReviewAll");
+  if (ra) ra.onclick = () => {
+    const w = weeks[state.weekIdx];
+    if (confirm(`${w.title}의 업무영역 ${w.items.length}개를 모두 팀장 검토 완료로 표시할까요?`))
+      setReviewed(w.items.map(i => i.wid), true, ra);
+  };
   el.querySelectorAll("[data-wedit]").forEach(b => b.onclick = () => {
     const w = weeks[state.weekIdx];
     openWeekly(w, w.items.find(i => i.wid === Number(b.dataset.wedit)));
@@ -740,12 +760,12 @@ function openWeekly(w, it) {
       { name: "plan", label: w.plan_label, type: "textarea", rows: 6 },
       { name: "key", label: "핵심 업무 계획 (선택)", type: "textarea", rows: 2 },
       { name: "author", label: "작성자", type: "select", options: ["", ...authors].map(a => [a, a || "(미작성)"]) },
-      ...(state.user.admin ? [{ name: "reviewed", label: "팀장 검토 완료", type: "checkbox" }] : []),
+      ...(state.user.admin && w.status === "최종" ? [{ name: "reviewed", label: "팀장 검토 완료", type: "checkbox" }] : []),
     ],
     onSave: v => {
       const row = { area: v.area, progress: v.progress, plan: v.plan, key: v.key, author: v.author,
         written: state.data.today.slice(5).replace("-", "/") };
-      if (state.user.admin) row.reviewed = v.reviewed;
+      if ("reviewed" in v) row.reviewed = v.reviewed;
       return it ? must(sb.from("hr_weekly").update(row).eq("id", it.wid))
         : must(sb.from("hr_weekly").insert({ ...row, sheet: w.sheet }));
     },

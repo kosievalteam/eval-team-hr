@@ -265,6 +265,9 @@ dialog::backdrop { background: rgba(20, 26, 38, .45); }
 .user-box .who { color: #fff; font-size: 13px; margin-bottom: 2px; }
 .pill.web { background: #e8f1ff; color: #2f6fd6; font-size: 11px; padding: 1px 7px; margin-left: 4px; vertical-align: 1px; }
 .task-head .btn-sm { margin-left: 8px; }
+.review-chk { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 3px 9px; border: 1px solid var(--line, #d9dde3); border-radius: 999px; }
+.review-chk:has(input:checked) { color: #1a7f4b; border-color: #1a7f4b; background: rgba(26, 127, 75, .08); }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .muted { color: var(--muted); }
