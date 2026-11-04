@@ -478,3 +478,10 @@ tbody tr:hover > td { background: #f8faff; }
 .cal .day { border-right-color: #dfe4eb; border-bottom-color: #dfe4eb; }
 .duty-card { border-color: #cfd6e0; }
 .duty-table th, .duty-table td { border-bottom-color: #dfe4eb; border-right-color: #dfe4eb; }
+/* 달력: 평가팀 주요 일정(진한 남색 띠) + 빈 곳을 눌러 추가 */
+.cal .day[data-day] { cursor: pointer; }
+.cal .day[data-day]:hover { background: #f7f9ff; }
+.cal .ev.team { background: var(--side); color: #fff; border-left: 3px solid #2ec4cf; font-weight: 700; cursor: pointer; }
+.cal .ev.team:hover { filter: brightness(1.25); }
+.legend .lg-team { color: var(--side); font-weight: 700; }
+.legend .lg-team::before { background: var(--side); }

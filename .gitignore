@@ -14,6 +14,11 @@ __pycache__/
 !static/templates/*.hwpx
 !docs/templates/*.hwpx
 
+# 엑셀·CSV(내려받은 SIMS 목록 등 내부 자료) — 저장소에 올리지 않음
+*.xlsx
+*.xls
+*.csv
+
 # 로고 원본 (웹에는 static/kosi_logo.png만 사용)
 워드마크.jpg
 

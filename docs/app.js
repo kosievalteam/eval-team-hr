@@ -222,7 +222,7 @@ async function fetchBase() {
 }
 
 async function fetchWeb() {
-  const [notices, slack, pclog, leave, weeks, weekly, tasks, review, duty] = await Promise.all([
+  const [notices, slack, pclog, leave, weeks, weekly, tasks, review, duty, events] = await Promise.all([
     must(sb.from("hr_notices").select("*")),
     must(sb.from("hr_slack_notices").select("*")),
     must(sb.from("hr_pc_log").select("*")),
@@ -232,8 +232,9 @@ async function fetchWeb() {
     must(sb.from("hr_tasks").select("*").order("id")),
     must(sb.from("hr_review").select("*")),
     must(sb.from("hr_duty").select("*")),
+    must(sb.from("hr_events").select("*").order("start_date")),
   ]);
-  return { notices, slack, pclog, leave, weeks, weekly, tasks, review, duty };
+  return { notices, slack, pclog, leave, weeks, weekly, tasks, review, duty, events };
 }
 
 function merge(d, web) {
@@ -247,6 +248,7 @@ function merge(d, web) {
   })];
   d.pclog = web.pclog;
   d.duty = web.duty[0] || null;
+  d.events = web.events;  // 평가팀 주요 일정
 
   // 엑셀 근태를 웹에서 고치면 웹 기록(replaces = 엑셀 줄 열쇠)이 그 줄을 대신한다. hidden = 삭제 표시.
   const replaced = new Set(web.leave.map(r => r.replaces).filter(Boolean));
@@ -1383,21 +1385,25 @@ function leaveCalendar(inCard = false) {
     const s = iso(cur);
     if (i >= 35 && cur.getMonth() !== m - 1) break;
     const evs = d.entries.filter(e => e.start <= s && s <= e.end && !isOffDay(s));
+    const team = d.events.filter(e => e.start_date <= s && s <= e.end_date);
     const cls = ["day", cur.getMonth() !== m - 1 && "out", cur.getDay() === 0 && "sun", cur.getDay() === 6 && "sat", d.holidays[s] && "hol", s === d.today && "today"].filter(Boolean).join(" ");
-    cells += `<div class="${cls}"><div class="dn">${cur.getDate()}</div>
+    cells += `<div class="${cls}" data-day="${s}" title="눌러서 ${esc(fmtDate(s))} 팀 일정 추가"><div class="dn">${cur.getDate()}</div>
       ${d.holidays[s] ? `<div class="hn">${esc(d.holidays[s])}</div>` : ""}
+      ${team.map(e => `<div class="ev team" data-event="${e.id}" title="${esc(e.title + (e.note ? " · " + e.note : ""))} (눌러서 수정)">${esc(e.title)}</div>`).join("")}
       ${evs.map(e => `<div class="ev t-${esc(e.category)}" title="${esc(e.name + " · " + e.label)}">${esc(e.name)} ${esc(e.category === "시간단위" ? "시간" : e.category === "연차" ? "" : e.category)}</div>`).join("")}
     </div>`;
   }
   const grid = `<div class="cal">${DOW.map(x => `<div class="dow">${x}</div>`).join("")}${cells}</div>`;
   return `
     <div class="toolbar">
-      ${inCard ? `<h2 style="font-size:16px;margin:0 8px 0 0">근무 현황</h2>` : ""}
+      ${inCard ? `<h2 style="font-size:16px;margin:0 8px 0 0">근무현황 · 팀 일정</h2>` : ""}
       <button class="btn-sec" data-cal="-1">◀</button>
       <b style="font-size:16px;min-width:110px;text-align:center">${y}년 ${m}월</b>
       <button class="btn-sec" data-cal="1">▶</button>
       <button class="btn-sec" data-cal="0">이번 달</button>
+      <button class="btn-pri" data-event-new>+ 팀 일정</button>
       <div class="legend" style="margin-left:auto">
+        <span class="lg-team">팀 일정</span>
         ${["연차", "오전반차", "오후반차", "시간단위", "공가"].map(c => `<span class="t-${c}" style="--c:currentColor;background:none">${c}</span>`).join("")}
       </div>
     </div>
@@ -1405,6 +1411,13 @@ function leaveCalendar(inCard = false) {
 }
 
 function bindCalendar(el, rerender) {
+  // 팀 일정: 일정을 누르면 수정, 칸의 빈 곳을 누르면 그날 일정 추가
+  el.querySelectorAll("[data-event]").forEach(x => x.onclick = ev => {
+    ev.stopPropagation();
+    openEvent(state.data.events.find(e => e.id === Number(x.dataset.event)));
+  });
+  el.querySelectorAll(".cal [data-day]").forEach(x => x.onclick = () => openEvent(null, x.dataset.day));
+  el.querySelectorAll("[data-event-new]").forEach(b => b.onclick = () => openEvent(null, state.data.today));
   el.querySelectorAll("[data-cal]").forEach(b => b.onclick = () => {
     const n = Number(b.dataset.cal);
     if (!n) state.calMonth = state.data.today.slice(0, 7);
@@ -1424,6 +1437,25 @@ function bindLeave(el) {
   bindCalendar(el, renderLeave);
   const nl = $("#btnNewLeave"); if (nl) nl.onclick = () => openLeave(null);
   el.querySelectorAll("[data-ledit]").forEach(b => b.onclick = () => openLeave(state.data.entries.find(e => e.id === Number(b.dataset.ledit))));
+}
+
+// 평가팀 주요 일정: 팀원 누구나 추가·수정, 삭제는 작성자·관리자
+function openEvent(e, day) {
+  openForm({
+    title: e ? "팀 일정 수정" : "팀 일정 추가",
+    data: e ? { title: e.title, start: e.start_date, end: e.end_date, note: e.note } : { start: day, end: day },
+    fields: [
+      { name: "title", label: "일정", required: true, placeholder: "예: 성과평가 위원회, 중기부 보고" },
+      [{ name: "start", label: "시작일", type: "date", required: true }, { name: "end", label: "종료일", type: "date", required: true }],
+      { name: "note", label: "메모 (시간·장소 등)" },
+    ],
+    onSave: v => {
+      if (v.end < v.start) throw new Error("종료일이 시작일보다 빠릅니다.");
+      const row = { title: v.title, start_date: v.start, end_date: v.end, note: v.note };
+      return e ? must(sb.from("hr_events").update(row).eq("id", e.id)) : must(sb.from("hr_events").insert(row));
+    },
+    onDelete: e && canEdit(e) && (() => must(sb.from("hr_events").delete().eq("id", e.id))),
+  });
 }
 
 const LEAVE_KINDS = ["연차", "오전반차", "오후반차", "시간단위휴가", "공가", "출장", "대외활동"];

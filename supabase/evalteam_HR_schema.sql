@@ -400,6 +400,30 @@ revoke execute on function public.hr_new_week(text, text, text, text, text, date
 grant execute on function public.hr_new_week(text, text, text, text, text, date, date, text),
   public.hr_member_email(text), public.hr_is_member(), public.hr_is_admin(), public.hr_my_name() to authenticated;
 
+-- ------------------------------------------------------------ 평가팀 주요 일정 (2026-11-04 추가, supabase/2026-11-04_team_events.sql)
+-- 달력에 근무현황과 함께 표시. 팀원 누구나 추가·수정, 삭제는 작성자·관리자.
+create table public.hr_events (
+  id bigint generated always as identity primary key,
+  title text not null,
+  start_date date not null,
+  end_date date not null,
+  note text not null default '',
+  created_by text default (auth.jwt() ->> 'email'),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (end_date >= start_date)
+);
+create trigger hr_events_touch before update on public.hr_events for each row execute function public.hr_touch();
+alter table public.hr_events enable row level security;
+create policy hr_events_read on public.hr_events for select to authenticated using ((select public.hr_is_member()));
+create policy hr_events_ins on public.hr_events for insert to authenticated
+  with check ((select public.hr_is_member()) and lower(created_by) = (select public.hr_my_email()));
+create policy hr_events_upd on public.hr_events for update to authenticated
+  using ((select public.hr_is_member())) with check ((select public.hr_is_member()));
+create policy hr_events_del on public.hr_events for delete to authenticated
+  using ((select public.hr_is_admin()) or lower(created_by) = (select public.hr_my_email()));
+grant select, insert, update, delete on public.hr_events to authenticated;
+
 -- ------------------------------------------------------------ 업무분장표 (2026-11-04 추가)
 -- 웹에서 시트처럼 직접 입력. 한 장(id = 1)에 {cols: [...], rows: [[...]]}. 읽기는 팀원, 쓰기는 관리자만.
 create table public.hr_duty (
