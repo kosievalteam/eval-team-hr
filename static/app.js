@@ -233,7 +233,13 @@ async function fetchWeb() {
     must(sb.from("hr_duty").select("*")),
     must(sb.from("hr_events").select("*").order("start_date")),
   ]);
-  return { notices, pclog, leave, weeks, weekly, tasks, review, duty, events };
+  // 검토의견서 최근 업로드(원드라이브 클라우드 확인). 표·함수가 없거나 실패해도 나머지 화면은 그대로 보인다.
+  const [uploads, onedrive] = await Promise.all([
+    sb.from("hr_onedrive_files").select("id,path,stage,field,case_no,created").not("stage", "is", null)
+      .order("created", { ascending: false }).limit(10).then(r => r.data || [], () => []),
+    sb.rpc("hr_onedrive_status").then(r => r.data || null, () => null),
+  ]);
+  return { notices, pclog, leave, weeks, weekly, tasks, review, duty, events, uploads, onedrive };
 }
 
 function merge(d, web) {
@@ -243,6 +249,8 @@ function merge(d, web) {
   d.pclog = web.pclog;
   d.duty = web.duty[0] || null;
   d.events = web.events;  // 평가팀 주요 일정
+  d.uploads = web.uploads || [];
+  d.onedrive = web.onedrive;
 
   // 엑셀 근태를 웹에서 고치면 웹 기록(replaces = 엑셀 줄 열쇠)이 그 줄을 대신한다. hidden = 삭제 표시.
   const replaced = new Set(web.leave.map(r => r.replaces).filter(Boolean));
@@ -508,6 +516,12 @@ function renderDashboard() {
       </div>`}
     </div>
 
+    <div class="grid g2 mt">
+      ${dashWeekly()}
+      ${dashEvents()}
+    </div>
+    ${dashUploads()}
+
     <div class="card mt">${leaveCalendar(true)}</div>
 
     <div class="card mt">
@@ -527,6 +541,7 @@ function renderDashboard() {
 
   const page = $("#page-dashboard");
   bindCalendar(page, renderDashboard);
+  page.querySelectorAll("[data-goweek]").forEach(b => b.onclick = () => { state.weekIdx = Number(b.dataset.goweek); state.taskTab = "week"; location.hash = "#tasks"; });
   page.querySelectorAll("[data-act]").forEach(b => b.onclick = () => {
     const a = b.dataset.act;
     if (a === "today") state.dashDate = d.today;
@@ -538,6 +553,76 @@ function renderDashboard() {
     renderDashboard();
   });
   $("#dashDate").onchange = ev => { if (ev.target.value) { state.dashDate = ev.target.value; renderDashboard(); } };
+}
+
+/* 대시보드: 이번 주 주간업무 현황 — 오늘이 들어 있는 주차(없으면 가장 최근 주차)의 업무영역별 작성·팀장 검토 */
+function dashWeek() {
+  const ws = state.data.weeks, t = state.data.today;
+  const i = ws.findIndex(w => w.start && w.end && w.start <= t && t <= w.end);
+  return i >= 0 ? i : ws.length ? 0 : -1;
+}
+function dashWeekly() {
+  const i = dashWeek();
+  const head = `<div class="card-h"><h2>이번 주 주간업무</h2>`;
+  if (i < 0) return `<div class="card">${head}<a class="right link" href="#tasks">팀주간업무 →</a></div><div class="empty">아직 주차가 없습니다.</div></div>`;
+  const w = state.data.weeks[i], final = w.status === "최종";
+  const items = [...w.items].sort((a, b) => areaCls(a.area).localeCompare(areaCls(b.area)));
+  const written = items.filter(it => it.author).length, reviewed = items.filter(it => it.reviewed).length;
+  const state_ = it => !it.author ? `<span class="dw-s todo">미작성</span>`
+    : final && it.reviewed ? `<span class="dw-s ok">팀장 검토 ✓</span>`
+    : final ? `<span class="dw-s wait">검토 전</span>` : `<span class="dw-s done">작성</span>`;
+  return `<div class="card">${head}<span class="sub">${esc(weekLabel(w))}</span>
+      ${w.status ? pill("s-" + w.status, w.status) : ""}<button class="right link" data-goweek="${i}">팀주간업무 →</button></div>
+    <div class="dw-sum"><b>${written}/${items.length}</b> 작성${final ? ` · <b>${reviewed}/${items.length}</b> 팀장 검토` : ""}
+      <div class="dw-bar"><i style="width:${items.length ? Math.round((final ? reviewed : written) / items.length * 100) : 0}%"></i></div></div>
+    ${items.length ? `<ul class="dw-list">${items.map(it => `<li class="${areaCls(it.area)}">
+        <span class="dw-area">${esc(it.area)}</span>
+        <span class="dw-who">${it.author ? splitNames(it.author).map(n => avatar(n)).join("") : ""}</span>
+        ${state_(it)}</li>`).join("")}</ul>` : `<div class="empty">업무영역이 없습니다.</div>`}
+  </div>`;
+}
+
+/* 대시보드: 팀 주요 일정 — 오늘부터 4주 안(진행 중 포함), 가까운 순 6건 */
+function dashEvents() {
+  const t = state.data.today, until = addDays(t, 27);
+  const list = state.data.events.filter(e => e.end_date >= t && e.start_date <= until)
+    .sort((a, b) => a.start_date.localeCompare(b.start_date) || a.id - b.id);
+  const dday = e => e.start_date <= t ? `<span class="de-d now">진행 중</span>`
+    : `<span class="de-d">D-${Math.round((parseIso(e.start_date) - parseIso(t)) / 864e5)}</span>`;
+  const when = e => e.start_date === e.end_date ? fmtDate(e.start_date) : `${fmtDate(e.start_date)} ~ ${fmtDate(e.end_date)}`;
+  return `<div class="card"><div class="card-h"><h2>팀 주요 일정</h2><span class="sub">앞으로 4주</span>
+      <button class="right btn-sm" data-event-new>+ 팀 일정</button></div>
+    ${list.length ? `<ul class="de-list">${list.slice(0, 6).map(e => `<li data-event="${e.id}" title="눌러서 수정">
+        ${dday(e)}<span class="de-t"><b>${esc(e.title)}</b><small>${esc(when(e))}${e.note ? " · " + esc(e.note) : ""}</small></span></li>`).join("")}</ul>
+      ${list.length > 6 ? `<div class="small muted" style="margin-top:6px">외 ${list.length - 6}건 — 아래 달력에서 볼 수 있습니다.</div>` : ""}`
+      : `<div class="empty">앞으로 4주 안에 잡힌 팀 일정이 없습니다.</div>`}
+  </div>`;
+}
+
+/* 대시보드: 검토의견서 최근 업로드 — 원드라이브 '26년 검토의견서 폴더(클라우드 확인, 5분마다)의 최근 파일 */
+function dashUploads() {
+  const d = state.data, od = d.onedrive;
+  const head = `<div class="card-h"><h2>검토의견서 최근 업로드</h2>
+    <span class="sub">${od?.last_run ? "원드라이브 확인 " + esc(fmtStamp(od.last_run)) : "원드라이브"}</span>
+    <a class="right link" href="#reviews">협의검토 →</a></div>`;
+  if (!od?.connected) return `<div class="card mt">${head}<div class="empty">원드라이브가 아직 연결되지 않았습니다. 연결되면 초안·검토본·수정본·최종(팀장) 폴더에 올라온 파일이 여기에 보입니다.</div></div>`;
+  const byNo = Object.fromEntries((d.reviews?.rows || []).map(r => [r.no, r]));
+  return `<div class="card mt">${head}
+    ${od.last_error ? `<div class="small" style="color:var(--red);margin-bottom:8px">⚠ 최근 확인 오류: ${esc(od.last_error)}</div>` : ""}
+    ${d.uploads.length ? `<ul class="up-list">${d.uploads.map(u => {
+        const r = byNo[u.case_no];
+        const meta = [u.case_no ? `<b>${esc(u.case_no)}</b>${r ? " " + esc(r.name) : ""}` : "협의번호 없음",
+          r?.assignee ? esc(r.assignee) : "", u.field ? esc(u.field) : ""].filter(Boolean).join(" · ");
+        return `<li>${pill("st-" + u.stage, u.stage)}
+          <span class="up-t"><span class="up-file">${esc(u.path.split("/").pop())}</span><small>${meta}</small></span>
+          <span class="up-when">${esc(fmtStamp(u.created))}</span></li>`;
+      }).join("")}</ul>` : `<div class="empty">아직 올라온 파일이 없습니다.</div>`}
+  </div>`;
+}
+// '2026-11-07T05:03:00Z' → '11/07 14:03' (한국 시간)
+function fmtStamp(s) {
+  const k = new Date(Date.parse(s) + 9 * 3600e3).toISOString();
+  return `${k.slice(5, 7)}/${k.slice(8, 10)} ${k.slice(11, 16)}`;
 }
 
 /* ------------------------------------------------------------ notices */

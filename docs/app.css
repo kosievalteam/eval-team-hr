@@ -492,3 +492,40 @@ tbody tr:hover > td { background: #f8faff; }
 .sims-tbl td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
 .sims-tbl tr:last-child td { border-bottom: 0; }
 .sims-tbl td.nowrap { white-space: nowrap; overflow-wrap: normal; }
+
+/* 대시보드: 이번 주 주간업무 */
+.dw-sum { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); margin-bottom: 10px; flex-wrap: wrap; }
+.dw-sum b { color: var(--text); font-size: 15px; }
+.dw-bar { flex: 1; min-width: 80px; height: 6px; background: var(--gray-soft); border-radius: 99px; overflow: hidden; }
+.dw-bar i { display: block; height: 100%; background: var(--green); border-radius: 99px; }
+.dw-list, .de-list { list-style: none; margin: 0; padding: 0; }
+.dw-list li { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-left: 4px solid var(--ac); background: var(--as); border-radius: 8px; margin-bottom: 6px; }
+.dw-area { font-weight: 700; color: var(--ac); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dw-who { display: flex; gap: 2px; }
+.dw-s { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.dw-s.todo { background: var(--red-soft, #fdecec); color: var(--red, #c0392b); }
+.dw-s.done { background: var(--pri-soft); color: var(--pri); }
+.dw-s.wait { background: var(--amber-soft); color: var(--amber); }
+.dw-s.ok { background: var(--green-soft); color: var(--green); }
+/* 대시보드: 팀 주요 일정 */
+.de-list li { display: flex; align-items: flex-start; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.de-list li:last-child { border-bottom: 0; }
+.de-list li:hover { background: var(--gray-soft); }
+.de-d { flex: none; min-width: 52px; text-align: center; font-size: 12px; font-weight: 800; padding: 3px 6px; border-radius: 8px; background: var(--side); color: #fff; }
+.de-d.now { background: #2ec4cf; }
+.de-t { display: flex; flex-direction: column; min-width: 0; }
+.de-t b { overflow-wrap: anywhere; }
+.de-t small { color: var(--muted); }
+/* 대시보드: 검토의견서 최근 업로드 */
+.up-list { list-style: none; margin: 0; padding: 0; }
+.up-list li { display: flex; align-items: flex-start; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+.up-list li:last-child { border-bottom: 0; }
+.up-list .pill { flex: none; margin-top: 1px; }
+.up-t { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.up-file { font-weight: 600; overflow-wrap: anywhere; }
+.up-t small { color: var(--muted); overflow-wrap: anywhere; }
+.up-when { flex: none; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.st-초안 { background: var(--amber-soft); color: var(--amber); }
+.st-검토본 { background: var(--pri-soft); color: var(--pri); }
+.st-수정본 { background: var(--violet-soft); color: var(--violet); }
+.st-최종\(팀장\) { background: var(--green-soft); color: var(--green); }
