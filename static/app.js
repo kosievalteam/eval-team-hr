@@ -18,7 +18,7 @@ const state = {
   rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["accepted", -1] },
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장", pclog: "공용 PC 사용대장", leave: "복무관리" };
+const PAGES = { dashboard: "대시보드", notices: "공지사항", events: "팀 일정", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장", pclog: "공용 PC 사용대장", leave: "복무관리" };
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const $ = (s, el = document) => el.querySelector(s);
@@ -458,7 +458,7 @@ function render() {
   document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("active", a.dataset.page === state.page));
   Object.keys(PAGES).forEach(p => ($("#page-" + p).hidden = p !== state.page));
   $("#pageTitle").textContent = PAGES[state.page];
-  ({ dashboard: renderDashboard, notices: renderNotices, duty: renderDuty, tasks: renderTasks, personal: renderPersonal, reviews: renderReviews, pclog: renderPcLog, leave: renderLeave })[state.page]();
+  ({ dashboard: renderDashboard, notices: renderNotices, events: renderEvents, duty: renderDuty, tasks: renderTasks, personal: renderPersonal, reviews: renderReviews, pclog: renderPcLog, leave: renderLeave })[state.page]();
 }
 
 /* ------------------------------------------------------------ dashboard */
@@ -506,10 +506,7 @@ function renderDashboard() {
       </div>`}
     </div>
 
-    <div class="grid g-65 mt">
-      <div class="card">${teamCalendar()}</div>
-      ${dashEvents()}
-    </div>
+    ${dashEvents()}
 
     <div class="card mt">${leaveCalendar(true)}</div>`;
 
@@ -536,10 +533,11 @@ function dashEvents() {
   const dday = e => e.start_date <= t ? `<span class="de-d now">진행 중</span>`
     : `<span class="de-d">D-${Math.round((parseIso(e.start_date) - parseIso(t)) / 864e5)}</span>`;
   const when = e => e.start_date === e.end_date ? fmtDate(e.start_date) : `${fmtDate(e.start_date)} ~ ${fmtDate(e.end_date)}`;
-  return `<div class="card"><div class="card-h"><h2>다가오는 팀 일정</h2><span class="sub">앞으로 4주</span></div>
+  return `<div class="card mt"><div class="card-h"><h2>다가오는 팀 일정</h2><span class="sub">앞으로 4주</span>
+      <a class="right link" href="#events">팀 일정 →</a></div>
     ${list.length ? `<ul class="de-list">${list.slice(0, 6).map(e => `<li data-event="${e.id}" title="눌러서 수정">
         ${dday(e)}<span class="de-t"><b>${esc(e.title)}</b><small>${esc(when(e))}${e.note ? " · " + esc(e.note) : ""}</small></span></li>`).join("")}</ul>
-      ${list.length > 6 ? `<div class="small muted" style="margin-top:6px">외 ${list.length - 6}건 — 팀 일정 달력에서 볼 수 있습니다.</div>` : ""}`
+      ${list.length > 6 ? `<div class="small muted" style="margin-top:6px">외 ${list.length - 6}건 — <a class="link" href="#events">팀 일정</a> 메뉴에서 볼 수 있습니다.</div>` : ""}`
       : `<div class="empty">앞으로 4주 안에 잡힌 팀 일정이 없습니다.</div>`}
   </div>`;
 }
@@ -1399,7 +1397,12 @@ function leaveCalendar(inCard = false) {
     ${inCard ? grid : `<div class="card" style="padding:0">${grid}</div>`}`;
 }
 
-// 팀 일정 전용 달력(대시보드): 일정을 누르면 수정, 날짜 칸의 빈 곳을 누르면 그날 일정 추가
+// 팀 일정 메뉴: 팀 일정 전용 달력 — 일정을 누르면 수정, 날짜 칸의 빈 곳을 누르면 그날 일정 추가
+function renderEvents() {
+  const el = $("#page-events");
+  el.innerHTML = `<div class="card">${teamCalendar()}</div>`;
+  bindCalendar(el, renderEvents);
+}
 function teamCalendar() {
   const d = state.data;
   if (!state.teamMonth) state.teamMonth = d.today.slice(0, 7);
