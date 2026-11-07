@@ -514,17 +514,13 @@ function renderDashboard() {
       </div>`}
     </div>
 
-    <div class="grid g2 mt">
-      ${dashWeekly()}
-      ${dashEvents()}
-    </div>
+    ${dashEvents()}
     ${dashUploads()}
 
     <div class="card mt">${leaveCalendar(true)}</div>`;
 
   const page = $("#page-dashboard");
   bindCalendar(page, renderDashboard);
-  page.querySelectorAll("[data-goweek]").forEach(b => b.onclick = () => { state.weekIdx = Number(b.dataset.goweek); state.taskTab = "week"; location.hash = "#tasks"; });
   page.querySelectorAll("[data-act]").forEach(b => b.onclick = () => {
     const a = b.dataset.act;
     if (a === "today") state.dashDate = d.today;
@@ -538,33 +534,6 @@ function renderDashboard() {
   $("#dashDate").onchange = ev => { if (ev.target.value) { state.dashDate = ev.target.value; renderDashboard(); } };
 }
 
-/* 대시보드: 이번 주 주간업무 현황 — 오늘이 들어 있는 주차(없으면 가장 최근 주차)의 업무영역별 작성·팀장 검토 */
-function dashWeek() {
-  const ws = state.data.weeks, t = state.data.today;
-  const i = ws.findIndex(w => w.start && w.end && w.start <= t && t <= w.end);
-  return i >= 0 ? i : ws.length ? 0 : -1;
-}
-function dashWeekly() {
-  const i = dashWeek();
-  const head = `<div class="card-h"><h2>이번 주 주간업무</h2>`;
-  if (i < 0) return `<div class="card">${head}<a class="right link" href="#tasks">팀주간업무 →</a></div><div class="empty">아직 주차가 없습니다.</div></div>`;
-  const w = state.data.weeks[i], final = w.status === "최종";
-  const items = [...w.items].sort((a, b) => areaCls(a.area).localeCompare(areaCls(b.area)));
-  const written = items.filter(it => it.author).length, reviewed = items.filter(it => it.reviewed).length;
-  const state_ = it => !it.author ? `<span class="dw-s todo">미작성</span>`
-    : final && it.reviewed ? `<span class="dw-s ok">팀장 검토 ✓</span>`
-    : final ? `<span class="dw-s wait">검토 전</span>` : `<span class="dw-s done">작성</span>`;
-  return `<div class="card">${head}<span class="sub">${esc(weekLabel(w))}</span>
-      ${w.status ? pill("s-" + w.status, w.status) : ""}<button class="right link" data-goweek="${i}">팀주간업무 →</button></div>
-    <div class="dw-sum"><b>${written}/${items.length}</b> 작성${final ? ` · <b>${reviewed}/${items.length}</b> 팀장 검토` : ""}
-      <div class="dw-bar"><i style="width:${items.length ? Math.round((final ? reviewed : written) / items.length * 100) : 0}%"></i></div></div>
-    ${items.length ? `<ul class="dw-list">${items.map(it => `<li class="${areaCls(it.area)}">
-        <span class="dw-area">${esc(it.area)}</span>
-        <span class="dw-who">${it.author ? splitNames(it.author).map(n => avatar(n)).join("") : ""}</span>
-        ${state_(it)}</li>`).join("")}</ul>` : `<div class="empty">업무영역이 없습니다.</div>`}
-  </div>`;
-}
-
 /* 대시보드: 팀 주요 일정 — 오늘부터 4주 안(진행 중 포함), 가까운 순 6건 */
 function dashEvents() {
   const t = state.data.today, until = addDays(t, 27);
@@ -573,7 +542,7 @@ function dashEvents() {
   const dday = e => e.start_date <= t ? `<span class="de-d now">진행 중</span>`
     : `<span class="de-d">D-${Math.round((parseIso(e.start_date) - parseIso(t)) / 864e5)}</span>`;
   const when = e => e.start_date === e.end_date ? fmtDate(e.start_date) : `${fmtDate(e.start_date)} ~ ${fmtDate(e.end_date)}`;
-  return `<div class="card"><div class="card-h"><h2>팀 주요 일정</h2><span class="sub">앞으로 4주</span>
+  return `<div class="card mt"><div class="card-h"><h2>팀 주요 일정</h2><span class="sub">앞으로 4주</span>
       <button class="right btn-sm" data-event-new>+ 팀 일정</button></div>
     ${list.length ? `<ul class="de-list">${list.slice(0, 6).map(e => `<li data-event="${e.id}" title="눌러서 수정">
         ${dday(e)}<span class="de-t"><b>${esc(e.title)}</b><small>${esc(when(e))}${e.note ? " · " + esc(e.note) : ""}</small></span></li>`).join("")}</ul>
@@ -1454,7 +1423,6 @@ function leaveCalendar(inCard = false) {
   const grid = `<div class="cal">${DOW.map(x => `<div class="dow">${x}</div>`).join("")}${cells}</div>`;
   return `
     <div class="toolbar">
-      ${inCard ? `<h2 style="font-size:16px;margin:0 8px 0 0">근무현황 · 팀 일정</h2>` : ""}
       <button class="btn-sec" data-cal="-1">◀</button>
       <b style="font-size:16px;min-width:110px;text-align:center">${y}년 ${m}월</b>
       <button class="btn-sec" data-cal="1">▶</button>
