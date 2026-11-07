@@ -74,6 +74,25 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 - 반영 직전 상태는 `hr_snapshot` id `backup-sims-latest`에 덮어써 남깁니다(마지막 1회분).
 - 엑셀 1행 제목 `사전협의_YYYYMMDD`(없으면 파일 이름의 날짜)를 기준일로 씁니다.
 
+## 원드라이브 검토의견서 폴더 클라우드 확인 (PC 불필요, 2026-11-07~)
+- Supabase Edge Function `onedrive-sync`(`supabase/functions/onedrive-sync`)를 `pg_cron`이 **5분마다** 실행합니다(`supabase/2026-11-07_onedrive_cloud.sql`).
+  1. Microsoft Graph로 '26년 검토의견서 폴더 전체 파일 목록을 읽음
+  2. 새 파일 → 아래 ‘새 파일 Slack 알림’ 표의 규칙대로 담당자에게 Slack DM(첫 확인 때 이미 있던 파일은 알리지 않음)
+  3. 파일 이름(없으면 폴더 이름)의 협의번호 `2026-0302`·`2026_0302`(없으면 사업명이 한 건만 맞을 때)로 협의건을 찾아
+     초안·검토본·수정본·최종(팀장) **처음 올라온 날**(한국 시간)을 협의검토에 채움(이미 있는 날짜보다 이를 때만)
+- 상태: `hr_onedrive`(연결 정보·마지막 실행 결과 `last_result`·오류 `last_error`, 화면에서 못 읽음), `hr_onedrive_files`(확인한 파일 목록).
+  관리자는 `select public.hr_onedrive_status();` 또는 앱에서 `sb.rpc("hr_onedrive_status")`로 확인
+- 준비(한 번):
+  1. Microsoft 앱 등록: https://entra.microsoft.com → 앱 등록 → 새 등록
+     - 지원 계정 유형: **개인 Microsoft 계정만**, 리디렉션 URI: **웹** `https://shlaohieozqanatatlzf.supabase.co/functions/v1/onedrive-sync/callback`
+     - 인증서 및 암호 → 새 클라이언트 암호 → ‘값’ 복사 / 개요의 ‘애플리케이션(클라이언트) ID’ 복사
+  2. Slack 앱: `slack_app_manifest.json`으로 만들고 설치 → Bot token(`xoxb-…`)
+  3. Supabase 대시보드 › Edge Functions › Secrets: `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `SLACK_BOT_TOKEN`
+  4. 연결: `hr_onedrive_status()`의 `login_url`을 열고 **폴더를 볼 수 있는 Microsoft 계정**으로 로그인 → ‘원드라이브 연결 완료’
+- Slack 이름으로 못 찾는 사람: `update hr_onedrive set slack_users = '{"이름":"U…"}' where id = 1;`
+- 알림 규칙을 바꾸면 `supabase/functions/onedrive-sync/index.ts`의 `RULES`를 고쳐 다시 배포합니다.
+- PC의 `tools/review_watch.py`·`review_notify.py`는 더 이상 쓰지 않습니다(같은 규칙의 예전 PC 버전).
+
 ## 검토의견서 새 파일 Slack 알림
 - 실시간 감시(`review_watch.bat`)가 '26년 검토의견서 폴더에 **새 파일**이 올라온 것(올리기 완료 후)을 보면 분야 담당자에게 Slack 개인 메시지를 보냅니다. 파일 수정·삭제는 알리지 않습니다.
 
