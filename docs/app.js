@@ -506,7 +506,10 @@ function renderDashboard() {
       </div>`}
     </div>
 
-    ${dashEvents()}
+    <div class="grid g-65 mt">
+      <div class="card">${teamCalendar()}</div>
+      ${dashEvents()}
+    </div>
 
     <div class="card mt">${leaveCalendar(true)}</div>`;
 
@@ -533,11 +536,10 @@ function dashEvents() {
   const dday = e => e.start_date <= t ? `<span class="de-d now">진행 중</span>`
     : `<span class="de-d">D-${Math.round((parseIso(e.start_date) - parseIso(t)) / 864e5)}</span>`;
   const when = e => e.start_date === e.end_date ? fmtDate(e.start_date) : `${fmtDate(e.start_date)} ~ ${fmtDate(e.end_date)}`;
-  return `<div class="card mt"><div class="card-h"><h2>팀 주요 일정</h2><span class="sub">앞으로 4주</span>
-      <button class="right btn-sm" data-event-new>+ 팀 일정</button></div>
+  return `<div class="card"><div class="card-h"><h2>다가오는 팀 일정</h2><span class="sub">앞으로 4주</span></div>
     ${list.length ? `<ul class="de-list">${list.slice(0, 6).map(e => `<li data-event="${e.id}" title="눌러서 수정">
         ${dday(e)}<span class="de-t"><b>${esc(e.title)}</b><small>${esc(when(e))}${e.note ? " · " + esc(e.note) : ""}</small></span></li>`).join("")}</ul>
-      ${list.length > 6 ? `<div class="small muted" style="margin-top:6px">외 ${list.length - 6}건 — 아래 달력에서 볼 수 있습니다.</div>` : ""}`
+      ${list.length > 6 ? `<div class="small muted" style="margin-top:6px">외 ${list.length - 6}건 — 팀 일정 달력에서 볼 수 있습니다.</div>` : ""}`
       : `<div class="empty">앞으로 4주 안에 잡힌 팀 일정이 없습니다.</div>`}
   </div>`;
 }
@@ -1377,11 +1379,9 @@ function leaveCalendar(inCard = false) {
     const s = iso(cur);
     if (i >= 35 && cur.getMonth() !== m - 1) break;
     const evs = d.entries.filter(e => e.start <= s && s <= e.end && !isOffDay(s));
-    const team = d.events.filter(e => e.start_date <= s && s <= e.end_date);
     const cls = ["day", cur.getMonth() !== m - 1 && "out", cur.getDay() === 0 && "sun", cur.getDay() === 6 && "sat", d.holidays[s] && "hol", s === d.today && "today"].filter(Boolean).join(" ");
-    cells += `<div class="${cls}" data-day="${s}" title="눌러서 ${esc(fmtDate(s))} 팀 일정 추가"><div class="dn">${cur.getDate()}</div>
+    cells += `<div class="${cls}"><div class="dn">${cur.getDate()}</div>
       ${d.holidays[s] ? `<div class="hn">${esc(d.holidays[s])}</div>` : ""}
-      ${team.map(e => `<div class="ev team" data-event="${e.id}" title="${esc(e.title + (e.note ? " · " + e.note : ""))} (눌러서 수정)">${esc(e.title)}</div>`).join("")}
       ${evs.map(e => `<div class="ev t-${esc(e.category)}" title="${esc(e.name + " · " + e.label)}">${esc(e.name)} ${esc(e.category === "시간단위" ? "시간" : e.category === "연차" ? "" : e.category)}</div>`).join("")}
     </div>`;
   }
@@ -1392,32 +1392,60 @@ function leaveCalendar(inCard = false) {
       <b style="font-size:16px;min-width:110px;text-align:center">${y}년 ${m}월</b>
       <button class="btn-sec" data-cal="1">▶</button>
       <button class="btn-sec" data-cal="0">이번 달</button>
-      <button class="btn-pri" data-event-new>+ 팀 일정</button>
       <div class="legend" style="margin-left:auto">
-        <span class="lg-team">팀 일정</span>
         ${["연차", "오전반차", "오후반차", "시간단위", "공가"].map(c => `<span class="t-${c}" style="--c:currentColor;background:none">${c}</span>`).join("")}
       </div>
     </div>
     ${inCard ? grid : `<div class="card" style="padding:0">${grid}</div>`}`;
 }
 
+// 팀 일정 전용 달력(대시보드): 일정을 누르면 수정, 날짜 칸의 빈 곳을 누르면 그날 일정 추가
+function teamCalendar() {
+  const d = state.data;
+  if (!state.teamMonth) state.teamMonth = d.today.slice(0, 7);
+  const [y, m] = state.teamMonth.split("-").map(Number);
+  const first = new Date(y, m - 1, 1);
+  const start = new Date(first); start.setDate(1 - first.getDay());
+  let cells = "";
+  for (let i = 0; i < 42; i++) {
+    const cur = new Date(start); cur.setDate(start.getDate() + i);
+    const s = iso(cur);
+    if (i >= 35 && cur.getMonth() !== m - 1) break;
+    const team = d.events.filter(e => e.start_date <= s && s <= e.end_date);
+    const cls = ["day", cur.getMonth() !== m - 1 && "out", cur.getDay() === 0 && "sun", cur.getDay() === 6 && "sat", d.holidays[s] && "hol", s === d.today && "today"].filter(Boolean).join(" ");
+    cells += `<div class="${cls}" data-day="${s}" title="눌러서 ${esc(fmtDate(s))} 팀 일정 추가"><div class="dn">${cur.getDate()}</div>
+      ${d.holidays[s] ? `<div class="hn">${esc(d.holidays[s])}</div>` : ""}
+      ${team.map(e => `<div class="ev team" data-event="${e.id}" title="${esc(e.title + (e.note ? " · " + e.note : ""))} (눌러서 수정)">${esc(e.title)}</div>`).join("")}
+    </div>`;
+  }
+  return `
+    <div class="card-h"><h2>팀 일정</h2>
+      <div class="right datenav">
+        <button data-tcal="-1">◀</button><b class="tc-m">${y}년 ${m}월</b><button data-tcal="1">▶</button>
+        <button data-tcal="0">이번 달</button>
+      </div>
+      <button class="btn-pri" data-event-new>+ 팀 일정</button></div>
+    <div class="cal team-cal">${DOW.map(x => `<div class="dow">${x}</div>`).join("")}${cells}</div>`;
+}
+
 function bindCalendar(el, rerender) {
-  // 팀 일정: 일정을 누르면 수정, 칸의 빈 곳을 누르면 그날 일정 추가
+  // 팀 일정(대시보드 팀 일정 달력·목록): 일정을 누르면 수정, 팀 일정 달력의 빈 칸을 누르면 그날 일정 추가
   el.querySelectorAll("[data-event]").forEach(x => x.onclick = ev => {
     ev.stopPropagation();
     openEvent(state.data.events.find(e => e.id === Number(x.dataset.event)));
   });
-  el.querySelectorAll(".cal [data-day]").forEach(x => x.onclick = () => openEvent(null, x.dataset.day));
+  el.querySelectorAll(".team-cal [data-day]").forEach(x => x.onclick = () => openEvent(null, x.dataset.day));
   el.querySelectorAll("[data-event-new]").forEach(b => b.onclick = () => openEvent(null, state.data.today));
-  el.querySelectorAll("[data-cal]").forEach(b => b.onclick = () => {
-    const n = Number(b.dataset.cal);
-    if (!n) state.calMonth = state.data.today.slice(0, 7);
+  const move = (key, n) => {
+    if (!n) state[key] = state.data.today.slice(0, 7);
     else {
-      const [y, m] = state.calMonth.split("-").map(Number);
-      state.calMonth = iso(new Date(y, m - 1 + n, 1)).slice(0, 7);
+      const [y, m] = (state[key] || state.data.today.slice(0, 7)).split("-").map(Number);
+      state[key] = iso(new Date(y, m - 1 + n, 1)).slice(0, 7);
     }
     rerender();
-  });
+  };
+  el.querySelectorAll("[data-cal]").forEach(b => b.onclick = () => move("calMonth", Number(b.dataset.cal)));
+  el.querySelectorAll("[data-tcal]").forEach(b => b.onclick = () => move("teamMonth", Number(b.dataset.tcal)));
 }
 
 function bindLeave(el) {

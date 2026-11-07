@@ -229,7 +229,7 @@ mark { background: #ffe58a; border-radius: 2px; padding: 0 1px; }
 .ps-stop { background: var(--red-soft); color: var(--red); }
 
 /* calendar */
-.cal { display: grid; grid-template-columns: repeat(7, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .cal .dow { background: #fafbfd; padding: 8px; font-size: 12px; color: var(--muted); text-align: center; border-bottom: 1px solid var(--line); }
 .cal .day { min-height: 96px; padding: 6px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .cal .day:nth-child(7n) { border-right: 0; }
@@ -503,3 +503,11 @@ tbody tr:hover > td { background: #f8faff; }
 .de-t { display: flex; flex-direction: column; min-width: 0; }
 .de-t b { overflow-wrap: anywhere; }
 .de-t small { color: var(--muted); }
+
+/* 대시보드: 팀 일정 전용 달력 */
+.team-cal .day { cursor: pointer; min-height: 74px; }
+.team-cal .day:hover { background: var(--gray-soft); }
+.tc-m { font-size: 15px; min-width: 96px; text-align: center; }
+.cal .day { min-width: 0; }
+.cal .ev { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-h:has(.team-cal), .card-h { flex-wrap: wrap; }
