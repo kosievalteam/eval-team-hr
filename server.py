@@ -334,7 +334,9 @@ def build_payload():
     today = date.today().isoformat()
     # 팀원은 config.json 명단 기준. 명단에 없는 이름(전출자 등)의 휴가·업무는 화면에서 제외한다.
     members = {m["name"]: {k: v for k, v in m.items() if k not in ("email", "admin")} for m in cfg.get("members", [])}
-    entries = [e for e in leave["entries"] if e["name"] in members]
+    # 2026-11-07부터 근태는 웹(hr_leave)에서만 관리한다. 엑셀 근태 58건은 그때 hr_leave로 옮겼으므로
+    # 엑셀에서는 공휴일(구분이 빈 행)만 읽는다 — 다시 배포해도 엑셀 근태가 웹에 중복으로 들어오지 않게 한다.
+    entries = []
     for m in members.values():
         used = planned = 0.0
         for e in entries:
@@ -359,6 +361,7 @@ def build_payload():
         "members": list(members.values()),
         "holidays": leave["holidays"],
         "entries": entries,
+        "leave_web": True,
         "reviews": reviews or {"file": "", "rows": []},
         "sources": {"leave": cfg["leave_file"], "reviews": cfg.get("review_file", "")},
         "errors": errors,
