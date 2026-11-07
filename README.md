@@ -130,6 +130,7 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 ## 웹 배포
 - 주소: GitHub Pages(https://kosievalteam.github.io/eval-team-hr/)와 Vercel(프로덕션) 두 곳. 둘 다 `docs/`를 그대로 서비스합니다.
   - Vercel은 GitHub 저장소 연결 방식: main에 푸시되면 자동으로 프로덕션 배포(`vercel.json`: 빌드 없음, 출력 폴더 `docs`).
+  - 같은 커밋을 다른 브랜치에 먼저 올리면 Vercel이 미리보기로만 배포하고 main 운영 주소에는 올리지 않을 수 있습니다. main에 먼저 푸시하세요.
   - Vercel(Hobby)은 프로젝트 소유 계정이 작성한 커밋만 자동 배포합니다. 그래서 이 저장소의 커밋 작성자는 `kosievalteam <kosi.evalteam@gmail.com>`으로 둡니다(`git config --local`).
 - `배포.bat` 실행 → 엑셀을 읽어 Supabase(`hr_snapshot`)에 올리고, 화면 파일이 바뀌었으면 `docs/`를 GitHub에 푸시합니다.
   - 데이터만 바뀐 경우 푸시 없이 바로 웹에 반영됩니다.
@@ -141,8 +142,8 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 - 로그인 계정은 HR앱 전용 Supabase 프로젝트 `evalteam_HR`의 Auth 계정입니다(`@kosi.re.kr`만 가입 가능). 2026-11-04에 `kosievalteam's Project`에서 데이터를 옮겼고(tools/migrate_to_evalteam_hr.py), 계정은 팀원이 새로 가입했습니다.
 - `config.json`의 `members[].email`에 있는 계정만 HR앱에 들어올 수 있습니다. 명단을 바꾸면 `배포.bat`을 실행해야 반영됩니다.
 - 계정이 없는 팀원은 로그인 화면의 ‘가입하기’로 만듭니다. 비밀번호를 잊으면 ‘비밀번호를 잊었나요?’로 재설정 메일을 받습니다.
-- `evalteam_HR`은 HR앱 전용이라 Authentication › URL Configuration의 **Site URL**을 `https://evalteamhr.vercel.app`으로 둡니다.
-  **Redirect URLs**: `https://evalteamhr.vercel.app/**`, `https://kosievalteam.github.io/eval-team-hr/**` (HR앱은 메일 링크를 지금 주소로 돌아오게 지정)
+- `evalteam_HR`은 HR앱 전용이라 Authentication › URL Configuration의 **Site URL**을 `https://eval-team-hr.vercel.app`으로 둡니다(예전 `evalteamhr.vercel.app`은 끊김).
+  **Redirect URLs**: `https://eval-team-hr.vercel.app/**`, `https://kosievalteam.github.io/eval-team-hr/**` (HR앱은 메일 링크를 지금 주소로 돌아오게 지정)
 
 ## 설정 (`config.json`)
 - `members[]`: `name`, `email`(로그인 계정), `admin`, `total`(2026년 부여 연차일수), `prior_used`(엑셀 기록 전 사용 일수)
