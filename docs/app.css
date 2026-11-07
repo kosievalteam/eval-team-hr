@@ -411,14 +411,13 @@ tbody tr:hover > td { background: #f8faff; }
 .cal .day.today .dn { background: var(--pri); color: #fff; }
 .cal .ev { border-left: 3px solid currentColor; font-weight: 600; padding: 2px 6px; }
 
-/* 공지사항: 왼쪽 색 막대(일반 파랑 · 중요 빨강 · Slack 보라) */
+/* 공지사항: 왼쪽 색 막대(일반 파랑 · 중요 빨강) */
 .notice-item { position: relative; padding: 14px 14px 14px 20px; border-radius: 10px; border-bottom: 0; }
 .notice-item + .notice-item { margin-top: 6px; }
 .notice-item::before { content: ""; position: absolute; left: 4px; top: 14px; bottom: 14px; width: 4px; border-radius: 2px; background: var(--pri); }
 .notice-item:hover { background: #f8faff; }
 .notice-item.is-imp { background: #fff7f8; }
 .notice-item.is-imp::before { background: var(--red); }
-.notice-item.is-slack::before { background: var(--violet); }
 .notice-item .t { font-size: 15px; }
 .notice-item .b { background: #f8f9fc; border-radius: 8px; padding: 10px 12px; }
 

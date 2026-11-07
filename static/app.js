@@ -222,9 +222,8 @@ async function fetchBase() {
 }
 
 async function fetchWeb() {
-  const [notices, slack, pclog, leave, weeks, weekly, tasks, review, duty, events] = await Promise.all([
+  const [notices, pclog, leave, weeks, weekly, tasks, review, duty, events] = await Promise.all([
     must(sb.from("hr_notices").select("*")),
-    must(sb.from("hr_slack_notices").select("*")),
     must(sb.from("hr_pc_log").select("*")),
     must(sb.from("hr_leave").select("*")),
     must(sb.from("hr_weeks").select("*").order("sort", { ascending: false })),
@@ -234,18 +233,13 @@ async function fetchWeb() {
     must(sb.from("hr_duty").select("*")),
     must(sb.from("hr_events").select("*").order("start_date")),
   ]);
-  return { notices, slack, pclog, leave, weeks, weekly, tasks, review, duty, events };
+  return { notices, pclog, leave, weeks, weekly, tasks, review, duty, events };
 }
 
 function merge(d, web) {
   const hpd = d.hours_per_day || 8;
   const names = new Set(d.members.map(m => m.name));
-  // Slack 전체공지 채널 메시지(배포 때 동기화)는 읽기 전용으로 함께 보여준다. 첫 줄 = 제목.
-  d.notices = [...web.notices, ...web.slack.map(s => {
-    const [title, ...rest] = s.text.split("\n");
-    return { id: "slack-" + s.ts, slack: true, ts: s.ts, title: title.replace(/^\*(.*)\*$/, "$1"), body: rest.join("\n").trim(),
-      author: s.author, date: s.date, important: false, permalink: s.permalink, edited: s.edited, reply_count: s.reply_count };
-  })];
+  d.notices = web.notices;
   d.pclog = web.pclog;
   d.duty = web.duty[0] || null;
   d.events = web.events;  // 평가팀 주요 일정
@@ -549,19 +543,16 @@ function renderDashboard() {
 /* ------------------------------------------------------------ notices */
 function renderNotices() {
   const list = [...state.data.notices].sort((a, b) => (b.important - a.important) || b.date.localeCompare(a.date)
-    || String(b.ts || b.created_at || "").localeCompare(String(a.ts || a.created_at || "")));
-  const slackTag = n => n.slack ? pill("web", "Slack")
-    : n.slack_ts && n.slack_ts !== "before-slack" ? ` <span class="small muted">· Slack 게시됨</span>` : "";
+    || String(b.created_at || "").localeCompare(String(a.created_at || "")));
   $("#page-notices").innerHTML = `
-    <div class="toolbar"><span class="muted">총 ${list.length}건 · Slack 전체공지 채널과 배포 때 동기화</span>
+    <div class="toolbar"><span class="muted">총 ${list.length}건</span>
       <button class="btn-pri" style="margin-left:auto" id="btnNewNotice">+ 공지 작성</button></div>
     <div class="card">
       ${list.length ? list.map(n => `
-        <div class="notice-item ${n.important ? "is-imp" : n.slack ? "is-slack" : ""}">
-          <div class="t">${n.important ? pill("imp", "중요") : ""}${slackTag(n)} ${esc(n.title)}
-            ${!n.slack && canEdit(n) ? `<span class="acts"><button class="btn-sm" data-edit="${esc(n.id)}">수정</button></span>` : ""}
-            ${n.permalink ? `<span class="acts"><a class="link small" href="${esc(n.permalink)}" target="_blank" rel="noopener">Slack에서 보기 →</a></span>` : ""}</div>
-          <div class="m">${esc(n.date)}${n.author ? " · " + esc(n.author) : ""}${n.edited ? " · 수정됨" : ""}${n.reply_count ? ` · 댓글 ${n.reply_count}` : ""}</div>
+        <div class="notice-item ${n.important ? "is-imp" : ""}">
+          <div class="t">${n.important ? pill("imp", "중요") : ""} ${esc(n.title)}
+            ${canEdit(n) ? `<span class="acts"><button class="btn-sm" data-edit="${esc(n.id)}">수정</button></span>` : ""}</div>
+          <div class="m">${esc(n.date)}${n.author ? " · " + esc(n.author) : ""}</div>
           ${n.body ? `<div class="b">${esc(n.body)}</div>` : ""}
         </div>`).join("") : `<div class="empty">등록된 공지가 없습니다.</div>`}
     </div>`;
@@ -577,7 +568,6 @@ function openNotice(n) {
       { name: "body", label: "내용", type: "textarea", rows: 7 },
       [{ name: "author", label: "작성자" }, { name: "date", label: "게시일", type: "date", required: true }],
       { name: "important", label: "중요 공지", type: "checkbox" },
-      ...(n ? [] : [{ type: "note", help: "저장하면 다음 배포(평일 09·13·18시) 때 Slack 전체공지 채널에도 게시됩니다. 게시 후 수정·삭제는 Slack에 반영되지 않습니다." }]),
     ],
     onSave: v => n ? must(sb.from("hr_notices").update(v).eq("id", n.id)) : must(sb.from("hr_notices").insert(v)),
     onDelete: n && (() => must(sb.from("hr_notices").delete().eq("id", n.id))),

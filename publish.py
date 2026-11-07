@@ -100,10 +100,6 @@ def main():
     build_docs()
     print(f"Supabase 업로드 완료 · 로그인 가능 팀원 {n}명 · 휴가 {len(payload['entries'])}건 · "
           f"사전협의 {len(payload['reviews']['rows'])}건")
-    import slack_sync  # slack_sync가 publish를 import하므로 여기서 불러온다
-    msg = slack_sync.sync(cfg)
-    if msg:
-        print(msg)
 
     if "--no-push" in sys.argv:
         return
