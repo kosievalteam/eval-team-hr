@@ -233,13 +233,7 @@ async function fetchWeb() {
     must(sb.from("hr_duty").select("*")),
     must(sb.from("hr_events").select("*").order("start_date")),
   ]);
-  // 검토의견서 최근 업로드(원드라이브 클라우드 확인). 표·함수가 없거나 실패해도 나머지 화면은 그대로 보인다.
-  const [uploads, onedrive] = await Promise.all([
-    sb.from("hr_onedrive_files").select("id,path,stage,field,case_no,created").not("stage", "is", null)
-      .order("created", { ascending: false }).limit(10).then(r => r.data || [], () => []),
-    sb.rpc("hr_onedrive_status").then(r => r.data || null, () => null),
-  ]);
-  return { notices, pclog, leave, weeks, weekly, tasks, review, duty, events, uploads, onedrive };
+  return { notices, pclog, leave, weeks, weekly, tasks, review, duty, events };
 }
 
 function merge(d, web) {
@@ -249,8 +243,6 @@ function merge(d, web) {
   d.pclog = web.pclog;
   d.duty = web.duty[0] || null;
   d.events = web.events;  // 평가팀 주요 일정
-  d.uploads = web.uploads || [];
-  d.onedrive = web.onedrive;
 
   // 엑셀 근태를 웹에서 고치면 웹 기록(replaces = 엑셀 줄 열쇠)이 그 줄을 대신한다. hidden = 삭제 표시.
   const replaced = new Set(web.leave.map(r => r.replaces).filter(Boolean));
@@ -515,7 +507,6 @@ function renderDashboard() {
     </div>
 
     ${dashEvents()}
-    ${dashUploads()}
 
     <div class="card mt">${leaveCalendar(true)}</div>`;
 
@@ -549,32 +540,6 @@ function dashEvents() {
       ${list.length > 6 ? `<div class="small muted" style="margin-top:6px">외 ${list.length - 6}건 — 아래 달력에서 볼 수 있습니다.</div>` : ""}`
       : `<div class="empty">앞으로 4주 안에 잡힌 팀 일정이 없습니다.</div>`}
   </div>`;
-}
-
-/* 대시보드: 검토의견서 최근 업로드 — 원드라이브 '26년 검토의견서 폴더(클라우드 확인, 5분마다)의 최근 파일 */
-function dashUploads() {
-  const d = state.data, od = d.onedrive;
-  const head = `<div class="card-h"><h2>검토의견서 최근 업로드</h2>
-    <span class="sub">${od?.last_run ? "원드라이브 확인 " + esc(fmtStamp(od.last_run)) : "원드라이브"}</span>
-    <a class="right link" href="#reviews">협의검토 →</a></div>`;
-  if (!od?.connected) return `<div class="card mt">${head}<div class="empty">원드라이브가 아직 연결되지 않았습니다. 연결되면 초안·검토본·수정본·최종(팀장) 폴더에 올라온 파일이 여기에 보입니다.</div></div>`;
-  const byNo = Object.fromEntries((d.reviews?.rows || []).map(r => [r.no, r]));
-  return `<div class="card mt">${head}
-    ${od.last_error ? `<div class="small" style="color:var(--red);margin-bottom:8px">⚠ 최근 확인 오류: ${esc(od.last_error)}</div>` : ""}
-    ${d.uploads.length ? `<ul class="up-list">${d.uploads.map(u => {
-        const r = byNo[u.case_no];
-        const meta = [u.case_no ? `<b>${esc(u.case_no)}</b>${r ? " " + esc(r.name) : ""}` : "협의번호 없음",
-          r?.assignee ? esc(r.assignee) : "", u.field ? esc(u.field) : ""].filter(Boolean).join(" · ");
-        return `<li>${pill("st-" + u.stage, u.stage)}
-          <span class="up-t"><span class="up-file">${esc(u.path.split("/").pop())}</span><small>${meta}</small></span>
-          <span class="up-when">${esc(fmtStamp(u.created))}</span></li>`;
-      }).join("")}</ul>` : `<div class="empty">아직 올라온 파일이 없습니다.</div>`}
-  </div>`;
-}
-// '2026-11-07T05:03:00Z' → '11/07 14:03' (한국 시간)
-function fmtStamp(s) {
-  const k = new Date(Date.parse(s) + 9 * 3600e3).toISOString();
-  return `${k.slice(5, 7)}/${k.slice(8, 10)} ${k.slice(11, 16)}`;
 }
 
 /* ------------------------------------------------------------ notices */

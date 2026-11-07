@@ -503,16 +503,3 @@ tbody tr:hover > td { background: #f8faff; }
 .de-t { display: flex; flex-direction: column; min-width: 0; }
 .de-t b { overflow-wrap: anywhere; }
 .de-t small { color: var(--muted); }
-/* 대시보드: 검토의견서 최근 업로드 */
-.up-list { list-style: none; margin: 0; padding: 0; }
-.up-list li { display: flex; align-items: flex-start; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); }
-.up-list li:last-child { border-bottom: 0; }
-.up-list .pill { flex: none; margin-top: 1px; }
-.up-t { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.up-file { font-weight: 600; overflow-wrap: anywhere; }
-.up-t small { color: var(--muted); overflow-wrap: anywhere; }
-.up-when { flex: none; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.st-초안 { background: var(--amber-soft); color: var(--amber); }
-.st-검토본 { background: var(--pri-soft); color: var(--pri); }
-.st-수정본 { background: var(--violet-soft); color: var(--violet); }
-.st-최종\(팀장\) { background: var(--green-soft); color: var(--green); }
