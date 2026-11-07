@@ -1685,6 +1685,8 @@ function renderReviewList() {
       <select id="rvWho"><option value="">전체 검토자</option>${opts([...people.map(p => [p, p]), ["_none", "미배정"]], f.who)}</select>
       <input id="rvQ" placeholder="사업명·부처·메모로 찾기" value="${esc(f.q)}" style="margin-left:auto;min-width:220px">
       <button class="btn-sec" id="btnRvXlsx" ${list.length ? "" : "disabled"} title="지금 걸러진 목록을 화면 순서대로 내려받습니다">⬇ 엑셀 다운로드</button>
+      <button class="btn-pri" id="btnRvSims" title="SIMS › 사전협의 목록에서 내려받은 엑셀로 진행상태·담당자·접수/검토완료·메모를 갱신합니다">⬆ SIMS 엑셀 반영</button>
+      <input type="file" id="rvSimsFile" accept=".xlsx,.xls" hidden>
     </div>
     <div class="toolbar">
       <div class="seg wrap">${chip("rs", "_open", `진행 중 ${active.length}`)}${chip("rs", "", `전체 ${base.length}`)}${stages.map(s => chip("rs", s, `${s} ${base.filter(r => r.state === s).length}`)).join("")}${chip("rs", "_nofinal", `최종(팀장) 전 ${base.filter(noFinal).length}`)}</div>
@@ -1695,8 +1697,9 @@ function renderReviewList() {
       <tbody>${list.map(r => `<tr>${RV_COLS.map(([k]) => td(r, k)).join("")}<td><button class="btn-sm" data-rv="${esc(r.no)}">입력</button></td></tr>`).join("")
         || `<tr><td colspan="${RV_COLS.length + 1}" class="empty">조건에 맞는 협의건이 없습니다.</td></tr>`}</tbody>
     </table></div>
-    <p class="small muted" style="margin:12px 0 0">※ 수집 ${esc(collected)} — 협의번호~접수완료는 SIMS(매일 09:30), 초안·검토본·수정본·최종(팀장)은
-      원드라이브 검토의견서 ①~④ 폴더에 처음 올라온 날(폴더에 올라오면 1~2분 안에 반영, 화면은 5분마다 새로 읽음). 경과일(위 통계)은 접수완료일부터 오늘까지(진행 중 건만).
+    <p class="small muted" style="margin:12px 0 0">※ 수집 ${esc(collected)} — 진행상태·검토담당자·접수완료·검토완료·메모는 SIMS 사전협의 목록 엑셀을
+      ‘⬆ SIMS 엑셀 반영’으로 올린 값, 초안·검토본·수정본·최종(팀장)은 원드라이브 검토의견서 ①~④ 폴더에 처음 올라온 날(초안·검토본은 ‘입력’으로 직접 적을 수 있음).
+      경과일(위 통계)은 접수완료일부터 오늘까지(진행 중 건만).
       <span class="ov-key">파란 글씨</span>는 웹에서 입력한 값으로 수집값보다 우선합니다.</p></div>`;
 
   el.querySelectorAll("[data-rk]").forEach(b => b.onclick = () => { f.kind = b.dataset.rk; renderReviewList(); });
@@ -1727,6 +1730,82 @@ function renderReviewList() {
     } catch (err) { alert(`엑셀 파일을 만들지 못했습니다. (${err.message || err})`); }
     btn.disabled = false;
   };
+  $("#btnRvSims").onclick = () => $("#rvSimsFile").click();
+  $("#rvSimsFile").onchange = async ev => {
+    const file = ev.target.files[0];
+    ev.target.value = "";
+    if (!file) return;
+    try { await simsPreview(await readSimsExcel(file), file.name); }
+    catch (err) { alert(`SIMS 엑셀을 반영하지 못했습니다.\n${err.message || err}`); }
+  };
+}
+
+/* SIMS 사전협의 목록 엑셀(직접 내려받은 파일) → hr_sims_import(DB 함수)로 협의검토 갱신. PC 자동 수집을 대신한다.
+   엑셀: 1행 제목 '사전협의_YYYYMMDD', 그 아래 머리글(협의번호·구분·신청기관명·신청유형·신청분야·세부/내역/내내역사업명·진행상태·검토담당자·접수완료·검토완료·메모) */
+async function readSimsExcel(file) {
+  const XLSX = await loadXlsx();
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" });
+  const hi = aoa.slice(0, 6).findIndex(r => r.map(c => String(c).trim()).includes("협의번호"));
+  if (hi < 0) throw new Error("머리글에 '협의번호'가 없습니다. SIMS › 사전협의 목록에서 내려받은 엑셀인지 확인하세요.");
+  const head = aoa[hi].map(c => String(c).trim());
+  const need = ["진행상태", "검토담당자", "접수완료", "검토완료", "메모"].filter(h => !head.includes(h));
+  if (need.length) throw new Error(`엑셀에 ${need.join("·")} 열이 없습니다.`);
+  const title = String(aoa[0]?.[0] || "");
+  const ymd = (title.match(/(20\d{2})(\d{2})(\d{2})/) || file.name.match(/(20\d{2})(\d{2})(\d{2})/) || []).slice(1);
+  const base = ymd.length ? ymd.join("-") : iso(new Date(file.lastModified));
+  const now = new Date();
+  const stamp = `${base} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const year = base.slice(0, 4);
+  const md = v => { const s = String(v || "").trim(); return /^\d{2}-\d{2}$/.test(s) ? `${year}-${s}` : /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : ""; };
+  const items = aoa.slice(hi + 1).map(r => Object.fromEntries(head.map((h, i) => [h, String(r[i] ?? "").trim()])))
+    .filter(x => x["협의번호"]).map(x => ({
+      no: x["협의번호"].replace("_", "-"), state: x["진행상태"], who: x["검토담당자"] === "미배정" ? "" : x["검토담당자"],
+      acc: md(x["접수완료"]), rev: md(x["검토완료"]), memo: x["메모"], kind: x["구분"] || "", agency: x["신청기관명"] || "",
+      type: x["신청유형"] || "", field: x["신청분야"] || "", name: x["내내역사업명"] || x["내역사업명"] || x["세부사업명"] || "",
+    }));
+  if (!items.length) throw new Error("엑셀에서 협의건을 찾지 못했습니다.");
+  return { items, stamp, title: title || file.name };
+}
+
+const SIMS_FIELD = { state: "진행상태", assignee: "검토담당자", accepted: "접수완료", reviewed: "검토완료", memo: "메모", new: "새 협의건" };
+async function simsPreview({ items, stamp, title }, fileName) {
+  const call = apply => sb.rpc("hr_sims_import", { p_items: items, p_file: fileName, p_stamp: stamp, p_apply: apply })
+    .then(({ data, error }) => { if (error) throw new Error(error.message); return data; });
+  const res = await call(false);
+  const dlg = $("#formDialog");
+  const cut = s => s.length > 80 ? s.slice(0, 80) + "…" : s;
+  const rows = res.changes.map(c => `<tr><td class="small"><b class="nowrap">${esc(c.no)}</b><div class="pt-desc">${esc(c.name || "")}</div></td>
+      <td class="nowrap small">${esc(SIMS_FIELD[c.field] || c.field)}</td>
+      <td class="small">${c.field === "new" ? "" : `<span class="muted">${esc(cut(c.before || "(빈칸)"))}</span> → `}<b>${esc(cut(c.after || "(빈칸)"))}</b></td></tr>`).join("");
+  const nNo = new Set(res.changes.map(c => c.no)).size;
+  dlg.style.width = "min(820px, 92vw)";  // 이 창만 넓게. 닫으면 다른 입력 창의 기본 폭으로 되돌린다
+  dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true });
+  dlg.innerHTML = `<form method="dialog" class="dlg">
+    <h3>SIMS 엑셀 반영 — 미리보기</h3>
+    <p class="small">${esc(title)} · 기준 ${esc(stamp)} · 엑셀 ${res.excel}건 / 현재 ${res.before}건</p>
+    <p>${res.changes.length ? `<b>${nNo}건</b>이 바뀝니다(새 협의건 ${res.added}건 포함).` : "바뀌는 내용이 없습니다. 이미 최신입니다."}</p>
+    ${rows ? `<div class="sims-wrap"><table class="sims-tbl"><thead><tr><th>협의건</th><th>항목</th><th>지금 → 바뀔 값</th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}
+    <p class="small muted">접수완료·검토완료는 비어 있을 때만 채우고, 메모는 내용이 달라졌을 때만 바꿉니다. 반영 직전 상태는 자동으로 백업됩니다.</p>
+    <div class="form-msg"></div>
+    <div class="dlg-actions"><button value="cancel" class="btn-sec">닫기</button>
+      ${res.changes.length ? `<button value="save" class="btn-pri">반영</button>` : ""}</div></form>`;
+  const form = $("form", dlg);
+  form.onsubmit = async ev => {
+    if (ev.submitter?.value !== "save") return;
+    ev.preventDefault();
+    form.querySelectorAll("button").forEach(b => (b.disabled = true));
+    try {
+      const done = await call(true);
+      dlg.close();
+      await load();
+      alert(`반영했습니다. ${new Set(done.changes.map(c => c.no)).size}건 갱신 (새 협의건 ${done.added}건).`);
+    } catch (err) {
+      $(".form-msg", form).textContent = err.message || String(err);
+      form.querySelectorAll("button").forEach(b => (b.disabled = false));
+    }
+  };
+  dlg.showModal();
 }
 
 function openReview(r) {
