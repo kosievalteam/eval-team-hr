@@ -1596,7 +1596,7 @@ function renderDuty() {
 }
 
 /* ------------------------------------------------------------ 협의검토 */
-// 협의번호~접수완료는 SIMS(매일 09:30), 초안·검토본·수정본·최종(팀장)은 원드라이브 ①~④ 폴더에 처음 올라온 날(2시간마다).
+// 협의번호~접수완료는 SIMS(매일 09:30), 초안·검토본·수정본·최종(팀장)은 원드라이브 ①~④ 폴더에 처음 올라온 날(올라오면 바로 반영).
 // 검토자·초안·검토본·메모는 웹에서 덮어쓸 수 있다.
 const REVIEW_EDIT = ["assignee", "draft", "draft_review", "memo"];
 const REVIEW_OPEN = ["접수완료", "검토진행", "재협의대기", "재협의진행"];  // 접수완료 후 아직 끝나지 않은 단계
@@ -1696,7 +1696,7 @@ function renderReviewList() {
         || `<tr><td colspan="${RV_COLS.length + 1}" class="empty">조건에 맞는 협의건이 없습니다.</td></tr>`}</tbody>
     </table></div>
     <p class="small muted" style="margin:12px 0 0">※ 수집 ${esc(collected)} — 협의번호~접수완료는 SIMS(매일 09:30), 초안·검토본·수정본·최종(팀장)은
-      원드라이브 검토의견서 ①~④ 폴더에 처음 올라온 날(2시간마다 갱신). 경과일(위 통계)은 접수완료일부터 오늘까지(진행 중 건만).
+      원드라이브 검토의견서 ①~④ 폴더에 처음 올라온 날(폴더에 올라오면 1~2분 안에 반영, 화면은 5분마다 새로 읽음). 경과일(위 통계)은 접수완료일부터 오늘까지(진행 중 건만).
       <span class="ov-key">파란 글씨</span>는 웹에서 입력한 값으로 수집값보다 우선합니다.</p></div>`;
 
   el.querySelectorAll("[data-rk]").forEach(b => b.onclick = () => { f.kind = b.dataset.rk; renderReviewList(); });

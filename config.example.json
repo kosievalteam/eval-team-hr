@@ -19,5 +19,9 @@
   ],
   "supabase_url": "https://shlaohieozqanatatlzf.supabase.co",
   "supabase_key": "sb_publishable_4ewcesIWvPxP1JL2ck7jvw_hcbWcS68",
-  "review_file": "D:\\dev_eval_team\\사전협의\\다운로드\\dashboard_data\\dash_cases_2026.csv"
+  "review_file": "D:\\dev_eval_team\\사전협의\\다운로드\\dashboard_data\\dash_cases_2026.csv",
+  "_review_watch_help": "review_watch_dir = 원드라이브 '26년 검토의견서 폴더(①~④ 폴더의 상위). tools/review_watch.bat이 감시해 파일이 올라오면 바로 협의검토에 반영",
+  "review_watch_dir": "C:\\Users\\user\\OneDrive\\업무자료\\사전협의\\'26년 검토의견서",
+  "review_watch_interval": 30,
+  "review_watch_settle": 60
 }
