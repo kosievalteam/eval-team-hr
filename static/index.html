@@ -16,29 +16,29 @@
     </div>
     <nav class="nav">
       <div class="nav-group">메인</div>
-      <a href="#dashboard" data-page="dashboard"><span class="ico">▦</span>대시보드</a>
-      <a href="#notices" data-page="notices"><span class="ico">✎</span>공지사항<span class="badge" id="navNotice"></span></a>
-      <a href="#events" data-page="events"><span class="ico">📅</span>팀 일정</a>
+      <a href="#dashboard" data-page="dashboard"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>대시보드</a>
+      <a href="#notices" data-page="notices"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>공지사항<span class="badge" id="navNotice"></span></a>
+      <a href="#events" data-page="events"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>팀 일정</a>
       <div class="nav-group">업무</div>
-      <a href="#tasks" data-page="tasks"><span class="ico">☰</span>팀주간업무</a>
-      <a href="#personal" data-page="personal"><span class="ico">✓</span>개인별업무</a>
-      <a href="#reviews" data-page="reviews"><span class="ico">⚖</span>협의검토</a>
-      <a href="#duty" data-page="duty"><span class="ico">▤</span>업무분장</a>
+      <a href="#tasks" data-page="tasks"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/></svg></span>팀주간업무</a>
+      <a href="#personal" data-page="personal"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></svg></span>개인별업무</a>
+      <a href="#reviews" data-page="reviews"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg></span>협의검토</a>
+      <a href="#duty" data-page="duty"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></span>업무분장</a>
       <div class="nav-group">인사</div>
-      <a href="#leave" data-page="leave"><span class="ico">✈</span>복무관리</a>
+      <a href="#leave" data-page="leave"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>복무관리</a>
       <div class="nav-group">공용</div>
-      <a href="#pclog" data-page="pclog"><span class="ico">🖥</span>공용 PC 사용대장</a>
+      <a href="#pclog" data-page="pclog"><span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>공용 PC 사용대장</a>
     </nav>
     <div class="sidebar-foot">
       <div class="user-box" id="userBox"></div>
-      <button class="btn-ghost" id="btnReload" title="엑셀 파일을 다시 읽습니다">⟳ 엑셀 새로고침</button>
+      <button class="btn-ghost" id="btnReload" title="데이터를 다시 읽습니다">새로고침</button>
       <div class="sync" id="syncInfo">-</div>
     </div>
   </aside>
 
   <main class="main">
     <header class="topbar">
-      <button class="menu-btn" id="menuBtn" aria-label="메뉴">☰</button>
+      <button class="menu-btn" id="menuBtn" aria-label="메뉴"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       <h1 id="pageTitle">대시보드</h1>
       <div class="topbar-right" id="todayLabel"></div>
     </header>

@@ -22,6 +22,11 @@ const PAGES = { dashboard: "대시보드", notices: "공지사항", events: "팀
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const $ = (s, el = document) => el.querySelector(s);
+// 선 아이콘(lucide 모양, 16px·선 1.5) — 버튼 안의 이전·다음 화살표
+const ICON = {
+  prev: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
+  next: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
+};
 
 /* ------------------------------------------------------------ utils */
 function esc(s) {
@@ -327,7 +332,7 @@ async function load(manual) {
     showErrors([STATIC ? `데이터를 불러오지 못했습니다. (${err.message || err})`
       : `서버 또는 Supabase에 연결할 수 없습니다. 'HR앱 실행.bat'으로 서버를 실행했는지 확인하세요. (${err.message || err})`]);
   } finally {
-    btn.disabled = false; btn.textContent = STATIC ? "⟳ 새로고침" : "⟳ 엑셀 새로고침";
+    btn.disabled = false; btn.textContent = STATIC ? "새로고침" : "엑셀 새로고침";
   }
 }
 function showErrors(list) {
@@ -468,7 +473,6 @@ function renderDashboard() {
   const st = dayStatus(day);
   const off = isOffDay(day);
   const holidayName = d.holidays[day];
-  const total = d.members.length;
 
   const chip = (x, note) => `<span class="chip">${avatar(x.m.name)}${esc(x.m.name)}${note ? ` <small>${esc(note)}</small>` : ""}</span>`;
   const col = (title, cls, list, noteFn) => `
@@ -477,28 +481,19 @@ function renderDashboard() {
       <div class="chips">${list.length ? list.map(x => chip(x, noteFn(x))).join("") : `<span class="empty">없음</span>`}</div>
     </div>`;
 
-  const statTile = (cls, icon, num, lbl) => `
-    <div class="card stat"><div class="dot ${cls}">${icon}</div>
-      <div><div class="num">${num}</div><div class="lbl">${lbl}</div></div></div>`;
 
   $("#page-dashboard").innerHTML = `
     <div class="card">
       <div class="card-h">
         <h2>오늘의 근무현황</h2><span class="sub">${esc(fmtLong(day))}</span>
         <div class="right datenav">
-          <button data-act="prev" title="이전 근무일">◀</button>
+          <button data-act="prev" title="이전 근무일" aria-label="이전 근무일">${ICON.prev}</button>
           <input type="date" id="dashDate" value="${day}">
-          <button data-act="next" title="다음 근무일">▶</button>
+          <button data-act="next" title="다음 근무일" aria-label="다음 근무일">${ICON.next}</button>
           <button data-act="today">오늘</button>
         </div>
       </div>
-      <div class="stats">
-        ${statTile("c-blue", "👥", total, "전체 팀원")}
-        ${statTile("c-green", "●", off ? "-" : st.work.length, "출근")}
-        ${statTile("c-violet", "✈", off ? "-" : st.trip.length, "출장·외부활동")}
-        ${statTile("c-amber", "☀", off ? "-" : st.leave.length, "휴가")}
-      </div>
-      ${off ? `<div class="holiday-banner">${holidayName ? `🎌 ${esc(holidayName)}` : "주말"} — 근무일이 아닙니다.</div>` : `
+      ${off ? `<div class="holiday-banner">${holidayName ? esc(holidayName) : "주말"} — 근무일이 아닙니다</div>` : `
       <div class="board mt">
         ${col("출근", "bc-work", st.work, x => x.e ? shortLabel(x.e) : "")}
         ${col("출장·외부활동", "bc-trip", st.trip, x => shortLabel(x.e))}
@@ -692,21 +687,21 @@ function renderTasks() {
     const final = w.status === "최종", lead = state.user.admin;
     const reviewMark = it => !final ? ""
       : lead ? `<label class="chk review-chk"><input type="checkbox" data-review="${it.wid}" ${it.reviewed ? "checked" : ""}> 팀장 검토</label>`
-      : it.reviewed ? pill("s-최종", "팀장 검토 ✓") : pill("s-완료", "검토 전");
+      : it.reviewed ? pill("s-최종", "팀장 검토 완료") : pill("s-완료", "검토 전");
     body = `
       <div class="toolbar">
-        <button class="btn-sec" data-wk="1" ${state.weekIdx >= weeks.length - 1 ? "disabled" : ""}>◀ 이전 주</button>
+        <button class="btn-sec" data-wk="1" ${state.weekIdx >= weeks.length - 1 ? "disabled" : ""}>${ICON.prev} 이전 주</button>
         <select id="weekSel">${weeks.map((x, i) => `<option value="${i}" ${i === state.weekIdx ? "selected" : ""}>${esc(x.title)}</option>`).join("")}</select>
-        <button class="btn-sec" data-wk="-1" ${state.weekIdx === 0 ? "disabled" : ""}>다음 주 ▶</button>
+        <button class="btn-sec" data-wk="-1" ${state.weekIdx === 0 ? "disabled" : ""}>다음 주 ${ICON.next}</button>
         ${w.status ? pill("s-" + w.status, w.status) : ""}
         ${canEditWeek(w) ? `<button class="btn-sm" id="btnWeekSet">주차 설정</button>` : ""}
-        ${final && lead && reviewed < w.items.length ? `<button class="btn-sm" id="btnReviewAll">✓ 전체 검토 완료</button>` : ""}
+        ${final && lead && reviewed < w.items.length ? `<button class="btn-sm" id="btnReviewAll">전체 검토 완료</button>` : ""}
         ${final ? (() => {
           // 버튼은 최종 주차에서 늘 보이고, 팀장 검토가 모두 끝나야 눌린다
           const ready = w.items.length && reviewed === w.items.length;
           const tip = ready ? "한글(HWPX) 양식 그대로 내려받기" : `팀장 검토가 모두 끝나면 내려받을 수 있습니다 (${reviewed}/${w.items.length})`;
-          return `<button class="btn-sm btn-hwp" id="btnHwpPlan" title="${tip}" ${ready ? "" : "disabled"}>⬇ 주간업무계획(한글)</button>
-            <button class="btn-sm btn-hwp key" id="btnHwpKey" title="${tip}" ${ready ? "" : "disabled"}>⬇ 핵심업무계획(한글)</button>
+          return `<button class="btn-sm btn-hwp" id="btnHwpPlan" title="${tip}" ${ready ? "" : "disabled"}>주간업무계획(한글)</button>
+            <button class="btn-sm btn-hwp key" id="btnHwpKey" title="${tip}" ${ready ? "" : "disabled"}>핵심업무계획(한글)</button>
             ${ready ? "" : `<span class="small muted">팀장 검토 ${reviewed}/${w.items.length} 완료 후 다운로드</span>`}`;
         })() : ""}
         <input id="taskQ" placeholder="검색 (업무·키워드·작성자)" value="${esc(state.taskQuery)}" style="margin-left:auto;min-width:220px">
@@ -714,10 +709,10 @@ function renderTasks() {
         <button class="btn-pri" id="btnNewWeekly">+ 업무 추가</button>
       </div>
       <div class="stats" style="margin-bottom:16px">
-        <div class="card stat"><div class="dot c-blue">☰</div><div><div class="num">${w.items.length}</div><div class="lbl">업무영역</div></div></div>
-        <div class="card stat"><div class="dot c-green">✎</div><div><div class="num">${written}/${w.items.length}</div><div class="lbl">작성 완료</div></div></div>
-        <div class="card stat"><div class="dot c-violet">✓</div><div><div class="num">${final ? `${reviewed}/${w.items.length}` : "-"}</div><div class="lbl">팀장 검토${final ? "" : " (최종 후)"}</div></div></div>
-        <div class="card stat"><div class="dot c-amber">★</div><div><div class="num">${w.items.filter(i => i.key).length}</div><div class="lbl">핵심업무 지정</div></div></div>
+        <div class="card stat"><div><div class="num">${w.items.length}</div><div class="lbl">업무영역</div></div></div>
+        <div class="card stat"><div><div class="num">${written}/${w.items.length}</div><div class="lbl">작성 완료</div></div></div>
+        <div class="card stat"><div><div class="num">${final ? `${reviewed}/${w.items.length}` : "-"}</div><div class="lbl">팀장 검토${final ? "" : " (최종 후)"}</div></div></div>
+        <div class="card stat"><div><div class="num">${w.items.filter(i => i.key).length}</div><div class="lbl">핵심업무 지정</div></div></div>
       </div>
       ${items.length ? items.map(it => `
         <div class="card task-card area-card ${areaCls(it.area)}">
@@ -732,7 +727,7 @@ function renderTasks() {
             <div class="task-col"><h4>${esc(w.plan_label)}</h4><div class="txt">${formatTask(it.plan, q)}</div></div>
           </div>
           ${isReviewArea(it.area) && it.stats ? statsTable(it.stats) : ""}
-          ${it.key ? `<div class="keybox"><b>★ 핵심 업무 계획</b>${formatTask(it.key, q)}</div>` : ""}
+          ${it.key ? `<div class="keybox"><b>핵심 업무 계획</b>${formatTask(it.key, q)}</div>` : ""}
         </div>`).join("") : `<div class="card empty">검색 결과가 없습니다.</div>`}`;
   } else {
     const areas = [...new Set(weeks.flatMap(w => w.items.map(i => areaKey(i.area))))];
@@ -1133,12 +1128,12 @@ function personalView() {
 
   return `
     <div class="toolbar">
-      <button class="btn-sec" data-pw="1" ${allWeeks || state.pWeek >= weeks.length - 1 ? "disabled" : ""}>◀ 이전 주</button>
+      <button class="btn-sec" data-pw="1" ${allWeeks || state.pWeek >= weeks.length - 1 ? "disabled" : ""}>${ICON.prev} 이전 주</button>
       <select id="pWeekSel">
         ${weeks.map((w, i) => `<option value="${i}" ${!allWeeks && i === state.pWeek ? "selected" : ""}>${esc(weekLabel(w))}</option>`).join("")}
         <option value="all" ${allWeeks ? "selected" : ""}>전체 주차 모아보기</option>
       </select>
-      <button class="btn-sec" data-pw="-1" ${allWeeks || state.pWeek === 0 ? "disabled" : ""}>다음 주 ▶</button>
+      <button class="btn-sec" data-pw="-1" ${allWeeks || state.pWeek === 0 ? "disabled" : ""}>다음 주 ${ICON.next}</button>
       <div class="seg">${["", ...P_STATUS].map(s => `<button data-ps="${s}" class="${state.pStatus === s ? "on" : ""}">${s || "전체"}</button>`).join("")}</div>
       ${!allWeeks && canEditWeek(weeks[state.pWeek]) ? `<button class="btn-sm" id="btnPWeekSet">주차 설정</button>` : ""}
       <input id="taskQ" placeholder="검색 (업무명·내용·결과)" value="${esc(state.taskQuery)}" style="margin-left:auto;min-width:220px">
@@ -1150,10 +1145,10 @@ function personalView() {
       ${owners.map(o => `<button data-po="${esc(o)}" class="${state.pOwner === o ? "on" : ""}">${esc(o)} <small>${inScope.filter(t => t.owner === o).length}</small></button>`).join("")}
     </div>
     <div class="stats" style="margin-bottom:16px">
-      <div class="card stat"><div class="dot c-blue">☰</div><div><div class="num">${base.length}</div><div class="lbl">전체 업무${state.pOwner ? ` · ${esc(state.pOwner)}` : ""}</div></div></div>
-      <div class="card stat"><div class="dot c-violet">▶</div><div><div class="num">${cnt("진행 중")}</div><div class="lbl">진행 중 · 시작 전 ${cnt("시작 전")}</div></div></div>
-      <div class="card stat"><div class="dot c-green">✓</div><div><div class="num">${cnt("완료")}</div><div class="lbl">완료${cnt("중단") ? ` · 중단 ${cnt("중단")}` : ""}</div></div></div>
-      <div class="card stat"><div class="dot c-red">!</div><div><div class="num">${base.filter(isOverdue).length}</div><div class="lbl">기한초과 (완료예정일 경과)</div></div></div>
+      <div class="card stat"><div><div class="num">${base.length}</div><div class="lbl">전체 업무${state.pOwner ? ` · ${esc(state.pOwner)}` : ""}</div></div></div>
+      <div class="card stat"><div><div class="num">${cnt("진행 중")}</div><div class="lbl">진행 중 · 시작 전 ${cnt("시작 전")}</div></div></div>
+      <div class="card stat"><div><div class="num">${cnt("완료")}</div><div class="lbl">완료${cnt("중단") ? ` · 중단 ${cnt("중단")}` : ""}</div></div></div>
+      <div class="card stat"><div><div class="num">${base.filter(isOverdue).length}</div><div class="lbl">기한초과 (완료예정일 경과)</div></div></div>
     </div>
     ${main}
     <p class="small muted">※ 본인 업무는 ‘수정’으로 고칠 수 있습니다(관리자는 모든 업무). 새 주차를 만들면 이전 주의 진행 중인 업무를 이어받을 수 있습니다.</p>`;
@@ -1236,7 +1231,7 @@ function renderPcLog() {
           `<option value="${m}" ${m === state.pcMonth ? "selected" : ""}>${m.replace("-", "년 ")}월</option>`).join("")}</select>
       <span class="muted">${list.length}건</span>
       ${inUse.length ? `<span class="small">${pill("ps-run", "사용 중")} ${inUse.map(r => esc(r.user_name)).join(", ")}</span>` : ""}
-      <button class="btn-sec" style="margin-left:auto" id="btnPcXlsx" ${list.length ? "" : "disabled"}>⬇ 엑셀 다운로드</button>
+      <button class="btn-sec" style="margin-left:auto" id="btnPcXlsx" ${list.length ? "" : "disabled"}>엑셀 다운로드</button>
       <button class="btn-pri" id="btnNewPc">+ 사용 기록</button>
     </div>
     <div class="card"><div class="table-wrap"><table>
@@ -1386,9 +1381,9 @@ function leaveCalendar(inCard = false) {
   const grid = `<div class="cal">${DOW.map(x => `<div class="dow">${x}</div>`).join("")}${cells}</div>`;
   return `
     <div class="toolbar">
-      <button class="btn-sec" data-cal="-1">◀</button>
+      <button class="btn-sec" data-cal="-1" aria-label="이전 달">${ICON.prev}</button>
       <b style="font-size:16px;min-width:110px;text-align:center">${y}년 ${m}월</b>
-      <button class="btn-sec" data-cal="1">▶</button>
+      <button class="btn-sec" data-cal="1" aria-label="다음 달">${ICON.next}</button>
       <button class="btn-sec" data-cal="0">이번 달</button>
       <div class="legend" style="margin-left:auto">
         ${["연차", "오전반차", "오후반차", "시간단위", "공가"].map(c => `<span class="t-${c}" style="--c:currentColor;background:none">${c}</span>`).join("")}
@@ -1424,7 +1419,7 @@ function teamCalendar() {
   return `
     <div class="card-h"><h2>팀 일정</h2>
       <div class="right datenav">
-        <button data-tcal="-1">◀</button><b class="tc-m">${y}년 ${m}월</b><button data-tcal="1">▶</button>
+        <button data-tcal="-1" aria-label="이전 달">${ICON.prev}</button><b class="tc-m">${y}년 ${m}월</b><button data-tcal="1" aria-label="다음 달">${ICON.next}</button>
         <button data-tcal="0">이번 달</button>
       </div>
       <button class="btn-pri" data-event-new>+ 팀 일정</button></div>
@@ -1584,7 +1579,7 @@ function renderDuty() {
       ${draft ? `
         <button class="btn-sec" data-duty="cancel" style="margin-left:auto">취소</button>
         <button class="btn-pri" data-duty="save">저장</button>`
-      : admin ? `<button class="btn-pri" data-duty="edit" style="margin-left:auto">✎ 편집</button>`
+      : admin ? `<button class="btn-pri" data-duty="edit" style="margin-left:auto">편집</button>`
       : `<span class="small muted" style="margin-left:auto">수정은 관리자만 할 수 있습니다</span>`}
     </div>
     ${draft ? `<p class="small muted" style="margin:0 0 10px">칸을 눌러 바로 입력하세요(줄바꿈 Enter). 엑셀에서 범위를 복사해 칸에 붙여넣으면 그 칸부터 채워집니다. 담당자는 팀원 명단에서 자동으로 채워집니다.</p>` : ""}
@@ -1706,18 +1701,18 @@ function renderReviewList() {
 
   el.innerHTML = `
     <div class="stats" style="margin-bottom:16px">
-      <div class="card stat"><div class="dot c-blue">⚖</div><div><div class="num">${base.length}</div><div class="lbl">협의건</div></div></div>
-      <div class="card stat"><div class="dot c-violet">▶</div><div><div class="num">${active.length}</div><div class="lbl">진행 중 (접수대기 ${active.length - open.length} 포함)</div></div></div>
-      <div class="card stat"><div class="dot c-amber">✎</div><div><div class="num">${open.filter(r => r.draft).length}/${open.length}</div><div class="lbl">진행 중 초안 작성</div></div></div>
-      <div class="card stat"><div class="dot c-red">!</div><div><div class="num">${open.filter(r => r.age >= 30).length}</div><div class="lbl">경과 30일 이상 (60일 이상 ${open.filter(r => r.age >= 60).length})</div></div></div>
+      <div class="card stat"><div><div class="num">${base.length}</div><div class="lbl">협의건</div></div></div>
+      <div class="card stat"><div><div class="num">${active.length}</div><div class="lbl">진행 중 (접수대기 ${active.length - open.length} 포함)</div></div></div>
+      <div class="card stat"><div><div class="num">${open.filter(r => r.draft).length}/${open.length}</div><div class="lbl">진행 중 초안 작성</div></div></div>
+      <div class="card stat"><div><div class="num">${open.filter(r => r.age >= 30).length}</div><div class="lbl">경과 30일 이상 (60일 이상 ${open.filter(r => r.age >= 60).length})</div></div></div>
     </div>
     <div class="toolbar">
       <div class="seg">${chip("rk", "", "전체")}${chip("rk", "중앙부처", "중앙부처")}${chip("rk", "지자체", "지자체")}</div>
       <select id="rvField"><option value="">전체 분야</option>${opts([...new Set(rows.map(r => r.field).filter(Boolean))].sort().map(x => [x, x]), f.field)}</select>
       <select id="rvWho"><option value="">전체 검토자</option>${opts([...people.map(p => [p, p]), ["_none", "미배정"]], f.who)}</select>
       <input id="rvQ" placeholder="사업명·부처·메모로 찾기" value="${esc(f.q)}" style="margin-left:auto;min-width:220px">
-      <button class="btn-sec" id="btnRvXlsx" ${list.length ? "" : "disabled"} title="지금 걸러진 목록을 화면 순서대로 내려받습니다">⬇ 엑셀 다운로드</button>
-      <button class="btn-pri" id="btnRvSims" title="SIMS › 사전협의 목록에서 내려받은 엑셀로 진행상태·담당자·접수/검토완료·메모를 갱신합니다">⬆ SIMS 엑셀 반영</button>
+      <button class="btn-sec" id="btnRvXlsx" ${list.length ? "" : "disabled"} title="지금 걸러진 목록을 화면 순서대로 내려받습니다">엑셀 다운로드</button>
+      <button class="btn-pri" id="btnRvSims" title="SIMS › 사전협의 목록에서 내려받은 엑셀로 진행상태·담당자·접수/검토완료·메모를 갱신합니다">SIMS 엑셀 반영</button>
       <input type="file" id="rvSimsFile" accept=".xlsx,.xls" hidden>
     </div>
     <div class="toolbar">
@@ -1729,10 +1724,8 @@ function renderReviewList() {
       <tbody>${list.map(r => `<tr>${RV_COLS.map(([k]) => td(r, k)).join("")}<td><button class="btn-sm" data-rv="${esc(r.no)}">입력</button></td></tr>`).join("")
         || `<tr><td colspan="${RV_COLS.length + 1}" class="empty">조건에 맞는 협의건이 없습니다.</td></tr>`}</tbody>
     </table></div>
-    <p class="small muted" style="margin:12px 0 0">※ 수집 ${esc(collected)} — 진행상태·검토담당자·접수완료·검토완료·메모는 SIMS 사전협의 목록 엑셀을
-      ‘⬆ SIMS 엑셀 반영’으로 올린 값, 초안·검토본·수정본·최종(팀장)은 원드라이브 검토의견서 ①~④ 폴더에 처음 올라온 날(초안·검토본은 ‘입력’으로 직접 적을 수 있음).
-      경과일(위 통계)은 접수완료일부터 오늘까지(진행 중 건만).
-      <span class="ov-key">파란 글씨</span>는 웹에서 입력한 값으로 수집값보다 우선합니다.</p></div>`;
+    <p class="small muted" style="margin:12px 0 0">수집 ${esc(collected)} · 진행상태·담당자·접수/검토완료·메모는 SIMS 목록 엑셀,
+      초안~최종(팀장)은 원드라이브 ①~④ 폴더에 처음 올라온 날 · 경과일은 접수완료일부터 오늘까지(진행 중 건) · <span class="ov-key">파란 글씨</span>는 웹에서 입력한 값(수집값보다 우선)</p></div>`;
 
   el.querySelectorAll("[data-rk]").forEach(b => b.onclick = () => { f.kind = b.dataset.rk; renderReviewList(); });
   el.querySelectorAll("[data-rs]").forEach(b => b.onclick = () => { f.stage = b.dataset.rs; renderReviewList(); });
