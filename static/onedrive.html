@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>원드라이브 연결</title>
+<style>
+  :root { --bg: #f4f6fa; --card: #fff; --text: #1d2433; --muted: #667085; --ok: #12805c; --bad: #c0392b; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Pretendard", sans-serif; line-height: 1.6; }
+  main { max-width: 560px; margin: 48px auto; padding: 0 16px; }
+  .card { background: var(--card); border-radius: 14px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,.06); }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  h1.ok { color: var(--ok); } h1.bad { color: var(--bad); }
+  p { margin: 8px 0; white-space: pre-line; overflow-wrap: anywhere; }
+  .muted { color: var(--muted); font-size: 14px; }
+  a { color: #3b6cf6; }
+</style>
+</head>
+<body>
+<main><div class="card">
+  <h1 id="t">원드라이브 연결</h1>
+  <p id="m"></p>
+  <p class="muted"><a href="./">HR앱으로 가기</a></p>
+</div></main>
+<script>
+  // onedrive-sync 함수가 결과를 ?ok=1|0&t=제목&m=내용 으로 넘긴다(Supabase 함수는 HTML 화면을 보여 줄 수 없어서)
+  const q = new URLSearchParams(location.search);
+  const t = document.getElementById("t");
+  t.textContent = q.get("t") || "원드라이브 연결";
+  t.className = q.get("ok") === "1" ? "ok" : q.get("ok") === "0" ? "bad" : "";
+  document.getElementById("m").textContent = q.get("m") || "";
+  document.title = t.textContent;
+</script>
+</body>
+</html>

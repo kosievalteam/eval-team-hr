@@ -201,11 +201,10 @@ async function sync() {
 }
 
 // ---------------------------------------------------------------- 진입
-const html = (title: string, body: string, status = 200) => new Response(
-  `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
-   <body style="font-family:system-ui,sans-serif;max-width:560px;margin:48px auto;padding:0 16px;line-height:1.6"><h2>${title}</h2>${body}</body>`,
-  { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
-const esc = (s: string) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+// Supabase 함수는 HTML 화면을 보낼 수 없다(일반 글자로 바뀌어 한글이 깨짐). 결과는 HR앱의 안내 페이지로 넘겨 보여 준다.
+const PAGE = "https://evalteamhr.vercel.app/onedrive.html";
+const page = (ok: boolean, title: string, msg: string) =>
+  Response.redirect(`${PAGE}?${new URLSearchParams({ ok: ok ? "1" : "0", t: title, m: msg })}`, 302);
 
 Deno.serve(async req => {
   const url = new URL(req.url);
@@ -224,9 +223,9 @@ Deno.serve(async req => {
     }
     if (path.endsWith("/login")) {
       const { data: st } = await db.from("hr_onedrive").select("setup_key").eq("id", 1).single();
-      if (!st || url.searchParams.get("key") !== st.setup_key) return html("링크가 올바르지 않습니다", "<p>관리자에게 받은 연결 링크를 그대로 여세요.</p>", 403);
+      if (!st || url.searchParams.get("key") !== st.setup_key) return page(false, "링크가 올바르지 않습니다", "관리자에게 받은 연결 링크를 그대로 여세요.");
       if (!Deno.env.get("MS_CLIENT_ID") || !Deno.env.get("MS_CLIENT_SECRET"))
-        return html("준비가 덜 되었습니다", "<p>Supabase Edge Function 비밀값 MS_CLIENT_ID·MS_CLIENT_SECRET을 먼저 넣으세요.</p>", 500);
+        return page(false, "준비가 덜 되었습니다", "Supabase 대시보드 › Edge Functions › Secrets에 MS_CLIENT_ID와 MS_CLIENT_SECRET을 먼저 넣은 뒤 연결 링크를 다시 여세요.");
       const state = crypto.randomUUID();
       await db.from("hr_onedrive").update({ login_state: state }).eq("id", 1);
       const q = new URLSearchParams({ client_id: Deno.env.get("MS_CLIENT_ID")!, response_type: "code", redirect_uri: REDIRECT,
@@ -235,8 +234,8 @@ Deno.serve(async req => {
     }
     if (path.endsWith("/callback")) {
       const { data: st } = await db.from("hr_onedrive").select("login_state, share_url").eq("id", 1).single();
-      if (url.searchParams.get("error")) return html("로그인이 취소되었습니다", `<p>${esc(url.searchParams.get("error_description") || "")}</p>`, 400);
-      if (!st?.login_state || url.searchParams.get("state") !== st.login_state) return html("다시 시도하세요", "<p>로그인 요청이 만료되었습니다. 연결 링크를 처음부터 다시 여세요.</p>", 400);
+      if (url.searchParams.get("error")) return page(false, "로그인하지 못했습니다", url.searchParams.get("error_description") || url.searchParams.get("error") || "");
+      if (!st?.login_state || url.searchParams.get("state") !== st.login_state) return page(false, "다시 시도하세요", "로그인 요청이 만료되었습니다. 연결 링크를 처음부터 다시 여세요.");
       const tk = await token({ grant_type: "authorization_code", code: url.searchParams.get("code") || "", redirect_uri: REDIRECT });
       const me = await graph(tk.access_token, "/me?$select=userPrincipalName,displayName");
       const root = await graph(tk.access_token, `/shares/${shareId(st.share_url)}/driveItem?$select=id,name,parentReference`);
@@ -246,12 +245,12 @@ Deno.serve(async req => {
       }).eq("id", 1);
       await db.from("hr_onedrive_files").delete().neq("id", "");
       const r = await sync();  // 첫 확인: 지금 있는 파일은 알리지 않고 날짜만 채운다
-      return html("원드라이브 연결 완료", `<p><b>${esc(root.name)}</b> 폴더를 ${esc(me.userPrincipalName || me.displayName || "")} 계정으로 연결했습니다.</p>
-        <p>파일 ${r.files ?? 0}개 확인 · 협의번호를 찾은 파일 ${r.matched ?? 0}개 · 날짜를 채운 협의건 ${r.cases_dated ?? 0}건</p>
-        <p>이제 5분마다 폴더를 확인해 새 파일을 담당자에게 Slack으로 알립니다. 이 창은 닫아도 됩니다.</p>`);
+      return page(true, "원드라이브 연결 완료", `'${root.name}' 폴더를 ${me.userPrincipalName || me.displayName || ""} 계정으로 연결했습니다.
+파일 ${r.files ?? 0}개 확인 · 협의번호를 찾은 파일 ${r.matched ?? 0}개 · 날짜를 채운 협의건 ${r.cases_dated ?? 0}건
+이제 5분마다 폴더를 확인해 새 파일을 담당자에게 Slack으로 알립니다. 이 창은 닫아도 됩니다.`);
     }
     return new Response("not found", { status: 404 });
   } catch (e) {
-    return html("오류", `<p>${esc((e as Error).message)}</p>`, 500);
+    return page(false, "오류가 났습니다", (e as Error).message);
   }
 });

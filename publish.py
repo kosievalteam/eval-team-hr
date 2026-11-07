@@ -65,6 +65,8 @@ def build_docs():
     for name in ("app.js", "app.css"):
         shutil.copy2(server.STATIC / name, DOCS / name)
         version[name] = hashlib.sha256((DOCS / name).read_bytes()).hexdigest()[:10]
+    if (server.STATIC / "onedrive.html").exists():  # 원드라이브 연결 결과 안내(onedrive-sync 함수가 넘겨줌)
+        shutil.copy2(server.STATIC / "onedrive.html", DOCS / "onedrive.html")
     for img in server.STATIC.glob("*.png"):  # 로고 등 이미지
         shutil.copy2(img, DOCS / img.name)
     if (server.STATIC / "templates").is_dir():  # 주간업무 한글(HWPX) 견본
