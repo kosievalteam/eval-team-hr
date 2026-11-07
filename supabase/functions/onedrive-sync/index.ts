@@ -202,7 +202,7 @@ async function sync() {
 
 // ---------------------------------------------------------------- 진입
 // Supabase 함수는 HTML 화면을 보낼 수 없다(일반 글자로 바뀌어 한글이 깨짐). 결과는 HR앱의 안내 페이지로 넘겨 보여 준다.
-const PAGE = "https://evalteamhr.vercel.app/onedrive.html";
+const PAGE = "https://kosievalteam.github.io/eval-team-hr/onedrive.html";  // evalteamhr.vercel.app은 2026-11-07 기준 연결 끊김
 const page = (ok: boolean, title: string, msg: string) =>
   Response.redirect(`${PAGE}?${new URLSearchParams({ ok: ok ? "1" : "0", t: title, m: msg })}`, 302);
 

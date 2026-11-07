@@ -3,7 +3,7 @@
 OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을 합쳐 보여주는 웹앱입니다.
 
 ## 실행
-- 웹: https://evalteamhr.vercel.app/ (또는 https://kosievalteam.github.io/eval-team-hr/) → `@kosi.re.kr` 계정으로 로그인 (HR앱 전용 계정)
+- 웹: https://eval-team-hr.vercel.app/ (예전 주소 evalteamhr.vercel.app은 2026-11-07 기준 연결 끊김) (또는 https://kosievalteam.github.io/eval-team-hr/) → `@kosi.re.kr` 계정으로 로그인 (HR앱 전용 계정)
 - 로컬: `HR앱 실행.bat` 더블클릭 → http://127.0.0.1:8765 (엑셀을 바로 읽음, 로그인은 동일)
 - 필요: Python 3, `pip install openpyxl`
 
