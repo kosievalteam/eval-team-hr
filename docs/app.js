@@ -489,8 +489,6 @@ function renderDashboard() {
     <div class="card stat"><div class="dot ${cls}">${icon}</div>
       <div><div class="num">${num}</div><div class="lbl">${lbl}</div></div></div>`;
 
-  const recent = [...d.entries].sort((a, b) => b.start.localeCompare(a.start) || b.id - a.id).slice(0, 8);
-
   $("#page-dashboard").innerHTML = `
     <div class="card">
       <div class="card-h">
@@ -522,22 +520,7 @@ function renderDashboard() {
     </div>
     ${dashUploads()}
 
-    <div class="card mt">${leaveCalendar(true)}</div>
-
-    <div class="card mt">
-      <div class="card-h"><h2>최근 휴가 신청</h2><a class="right link" href="#leave">복무관리 →</a></div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>상태</th><th>신청자</th><th>유형</th><th>기간</th><th class="num">차감</th><th>상세</th></tr></thead>
-        <tbody>${recent.map(e => `<tr>
-          <td>${pill("s-" + entryStatus(e), entryStatus(e))}</td>
-          <td>${who(e.name)}</td>
-          <td>${pill("t-" + e.category, e.category)}</td>
-          <td>${fmtPeriod(e)}</td>
-          <td class="num">${e.deduct ? fmtDays(e.deduct) : "-"}</td>
-          <td class="muted small">${esc(e.category === "연차" || e.category.endsWith("반차") ? e.note : e.label)}</td>
-        </tr>`).join("")}</tbody>
-      </table></div>
-    </div>`;
+    <div class="card mt">${leaveCalendar(true)}</div>`;
 
   const page = $("#page-dashboard");
   bindCalendar(page, renderDashboard);
