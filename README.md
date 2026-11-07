@@ -57,6 +57,27 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 - 두 작업 모두 '절전 해제(WakeToRun)'와 '놓친 일정 바로 실행(StartWhenAvailable)'이 켜져 있어, PC가 절전 중이어도 깨워서 돌립니다(종료·최대 절전·로그아웃 상태는 불가).
 - 기록: `logs\review_YYYYMMDD.log`. SIMS 수집에는 `사전협의\다운로드\sims_register.py`로 등록한 로그인 정보가 필요합니다.
 
+## 검토의견서 새 파일 Slack 알림
+- 실시간 감시(`review_watch.bat`)가 '26년 검토의견서 폴더에 **새 파일**이 올라온 것(올리기 완료 후)을 보면 분야 담당자에게 Slack 개인 메시지를 보냅니다. 파일 수정·삭제는 알리지 않습니다.
+
+| 단계 폴더 | 분야 폴더 | 받는 사람 |
+|---|---|---|
+| 초안 · 검토본 · 최종(팀장) | 창업, 내수 | 장채윤 |
+| 〃 | 수출 | 신경희 |
+| 〃 | 경영, 소상공인 | 윤의열 |
+| 〃 | 금융, 기술, 인력 | 이은실 |
+| 초안만 | 경영, 창업, 내수, 인력, 수출 | 김미정 (위 담당자와 함께) |
+| 수정본 | 모든 분야 | 김미정 |
+
+- 폴더 이름에 ‘초안’·‘검토’·‘수정’·‘최종’과 분야 낱말이 들어 있으면 됩니다(예: `①초안\창업\…`). 수정본 폴더는 분야와 관계없이 김미정에게만 알립니다.
+- 규칙 변경: `tools/review_notify.py`의 `NOTIFY_RULES`, 또는 `config.json`에 같은 모양의 `review_notify` 목록을 넣으면 그것을 씁니다.
+- 한 사람에게 같은 때 올라온 여러 파일은 한 메시지로 묶습니다. 감시가 꺼져 있던 동안 올라온 파일은 다시 켤 때 알립니다(`logs\review_watch_seen.json`).
+- 준비(한 번):
+  1. https://api.slack.com/apps → Create New App → From a manifest → `slack_app_manifest.json` 붙여넣기 → Install to Workspace
+  2. Bot User OAuth Token(`xoxb-…`)을 `.secret\slack_token.txt`에 저장
+  3. Slack에서 이름으로 찾지 못하는 사람은 `config.json`의 `slack_users`에 `"이름": "U…"`(멤버 ID)를 적음
+  4. 시험: `python tools\review_notify.py "①초안\창업\시험.hwpx"` (누구에게 갈지만 표시) → `--send`를 붙이면 실제 발송
+
 ## SIMS 로그인 (크롬 로그인 상태 재사용)
 - 비밀번호 대신, 자동 수집 전용 크롬 창에서 사람이 한 번 로그인한 상태(쿠키)를 저장해 씁니다. 인증서·문자 인증이 있어도 됩니다.
 - 준비(한 번): `pip install playwright` — PC에 설치된 Google Chrome을 쓰므로 `playwright install`은 필요 없습니다.

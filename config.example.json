@@ -26,5 +26,8 @@
   "review_watch_settle": 60,
   "_sims_help": "sims_url = SIMS 첫 화면(로그인 후 협의현황이 보이는 주소면 더 좋음). tools/sims_login.bat으로 크롬에 한 번 로그인, sims_keepalive_min분마다 로그인 유지(0이면 끔)",
   "sims_url": "https://www.sims.or.kr/",
-  "sims_keepalive_min": 20
+  "sims_keepalive_min": 20,
+  "_slack_help": "검토의견서 새 파일 Slack 알림. 토큰은 .secret/slack_token.txt. slack_users는 Slack에서 이름으로 못 찾을 때만 적음(프로필 › ⋮ › 멤버 ID 복사). review_watch_link는 메시지에 붙일 폴더 링크(선택)",
+  "slack_users": {"장채윤": "U0XXXXXXX"},
+  "review_watch_link": "https://1drv.ms/f/...(공유 링크)"
 }

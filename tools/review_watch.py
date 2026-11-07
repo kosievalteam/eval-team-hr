@@ -7,10 +7,13 @@
 - 파일이 새로 생기거나 바뀌거나 지워지면, 올리기가 끝나도록 review_watch_settle초(기본 60초) 동안
   더 바뀌지 않는 것을 확인한 뒤 review_update.py onedrive(원드라이브 수집 → 가공 → HR앱 업로드)를 실행한다.
 - 시작할 때 한 번 갱신한다(꺼져 있던 동안 올라온 파일 반영). 웹 화면은 5분마다·탭을 다시 열 때 새 데이터를 읽는다.
+- 새 파일 Slack 알림: 올리기가 끝난 새 파일을 review_notify.py 규칙(단계·분야 폴더 → 담당자)대로 DM으로 알린다.
+  본 파일 목록을 logs/review_watch_seen.json에 남겨, 감시가 꺼져 있던 동안 올라온 파일도 다시 켤 때 알린다(처음 실행 때는 알리지 않음).
 - SIMS 로그인 유지: sims_keepalive_min분(기본 20분, 0이면 끔)마다 sims_browser.py check를 실행해
   크롬에 저장한 SIMS 로그인이 시간 초과로 끊기지 않게 한다(로그인 기록이 있을 때만).
 - 기록: logs/review_YYYYMMDD.log
 """
+import json
 import os
 import subprocess
 import sys
@@ -23,6 +26,7 @@ sys.path.insert(0, str(BASE))
 import server  # noqa: E402
 
 LOGS = BASE / "logs"
+SEEN = LOGS / "review_watch_seen.json"
 # 한글·엑셀이 편집 중에 만드는 임시 파일, 원드라이브 동기화 중 파일은 변화로 보지 않는다
 IGNORE_PREFIX = ("~$", ".~", "~")
 IGNORE_SUFFIX = (".tmp", ".partial", ".crdownload", ".lock")
@@ -62,6 +66,34 @@ def describe(old, new):
     return " · ".join(parts)
 
 
+def load_seen():
+    try:
+        return set(json.loads(SEEN.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return None
+
+
+def save_seen(files):
+    LOGS.mkdir(exist_ok=True)
+    SEEN.write_text(json.dumps(sorted(files), ensure_ascii=False), encoding="utf-8")
+
+
+def notify_new(files):
+    """새 파일 Slack 알림. 알림 모듈 문제로 감시가 멈추지 않게 한다."""
+    if not files:
+        return
+    try:
+        import review_notify
+        review_notify.notify(sorted(files), log=log)
+    except Exception as e:
+        log(f"Slack 알림 오류: {e}")
+
+
+def load_seen_or(default):
+    seen = load_seen()
+    return default if seen is None else seen
+
+
 def update():
     """review_update.py onedrive 실행. 실패해도 감시는 계속한다."""
     res = subprocess.run([sys.executable, str(BASE / "tools" / "review_update.py"), "onedrive"], cwd=BASE,
@@ -90,6 +122,12 @@ def main():
 
     log(f"시작 — {root} (확인 {interval}초 간격, 올리기 끝 대기 {settle}초)")
     last = snapshot(root)
+    seen = load_seen()
+    if seen is None:
+        log(f"처음 실행 — 지금 있는 파일 {len(last)}개는 알리지 않습니다")
+    else:
+        notify_new(set(last) - seen)  # 감시가 꺼져 있던 동안 올라온 파일
+    save_seen(last)
     update()
     if "--once" in sys.argv:
         return
@@ -121,6 +159,8 @@ def main():
             continue
         if pending_since is not None and time.monotonic() - pending_since >= settle:
             pending_since = None
+            notify_new(set(last) - load_seen_or(last))
+            save_seen(last)
             update()
             last = snapshot(root)  # 갱신하는 동안 생긴 변화는 다음 확인에서 잡는다
 
