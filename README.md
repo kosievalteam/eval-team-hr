@@ -14,7 +14,7 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 | 업무분장표 | - (Supabase `hr_duty`에만 저장) | 시트처럼 직접 입력·엑셀 범위 붙여넣기, 행·열 추가·삭제 (**관리자만**) |
 | 팀주간업무 › 주차별 보기 | - (Supabase에만 저장, 2026-11-03 엑셀에서 1회 이전) | 새 주차 만들기(지난주 계획→이번 주 진행), 업무영역 추가·수정(팀원 누구나), ‘최종’ 주차에서 업무영역별 팀장 검토 체크·전체 검토 완료(관리자) |
 | 개인별업무 | - (Supabase에만 저장, 2026-11-03 엑셀에서 1회 이전) | 새 주차 만들기(진행 중 업무 이어받기), 본인 업무 추가·수정 |
-| 협의검토 | `사전협의\다운로드\dashboard_data\dash_cases_2026.csv` — 협의번호~접수완료는 SIMS(매일 09:30), 초안·검토본·수정본·최종(팀장)은 원드라이브 ①~④ 폴더 첫 업로드일(2시간마다) | 검토자·초안·검토본·메모 입력 |
+| 협의검토 | `사전협의\다운로드\dashboard_data\dash_cases_2026.csv` — 협의번호~접수완료는 SIMS(매일 09:30), 초안·검토본·수정본·최종(팀장)은 원드라이브 ①~④ 폴더 첫 업로드일(폴더에 올라오면 바로 반영) | 검토자·초안·검토본·메모 입력 |
 | 공지사항 | - (Supabase에만 저장, Slack과 연동하지 않음) | 작성·수정·삭제 (본인 것) |
 | 공용 PC 사용대장 | - (Supabase에만 저장) | 사용시작·사용종료 일시, 사용자, 용도 기록(‘사용 종료’ 버튼), 수정·삭제 (본인 것) |
 
@@ -44,8 +44,16 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 - 주말·공휴일은 기간 계산에서 제외
 
 ## 협의검토 자동 갱신 (작업 스케줄러, 이 PC가 켜져 있어야 함)
+- **실시간 감시** `정책평가팀 HR 검토의견서 감시` 로그온 시 시작 → `tools\review_watch.bat`
+  - `config.json`의 `review_watch_dir`(원드라이브 '26년 검토의견서 폴더, ①~④ 폴더의 상위)를 30초마다 살펴봅니다.
+  - 파일이 추가·변경·삭제되면 60초 동안 더 바뀌지 않는지(올리기 완료) 확인한 뒤 `review_update.bat onedrive`를 실행합니다 → 1~2분 안에 HR앱 반영.
+  - 한글·엑셀 임시 파일(`~$…`, `.tmp`)은 무시합니다. 간격은 `review_watch_interval`·`review_watch_settle`(초)로 조정합니다.
+  - 원드라이브에서 그 폴더를 **‘이 디바이스에 항상 유지’**로 두어야 다른 팀원이 올린 파일도 이 PC에 바로 내려옵니다.
+  - 등록(한 번, 명령 프롬프트): `schtasks /create /tn "정책평가팀 HR 검토의견서 감시" /tr "\"<HR앱 폴더>\tools\review_watch.bat\"" /sc onlogon /rl limited`
+  - 시험: `python tools\review_watch.py --once` (한 번 갱신하고 종료)
 - `정책평가팀 HR 협의검토 SIMS` 매일 09:30 → `tools\review_update.bat sims` (SIMS + 원드라이브 수집 → HR앱 업로드)
-- `정책평가팀 HR 협의검토 원드라이브` 2시간마다 → `tools\review_update.bat onedrive` (원드라이브 ①~④ 폴더 → HR앱 업로드, 휴가 엑셀도 함께 갱신)
+- `정책평가팀 HR 협의검토 원드라이브` 2시간마다 → `tools\review_update.bat onedrive` (감시가 꺼져 있었을 때를 위한 보완, 휴가 엑셀도 함께 갱신)
+- 갱신이 겹치지 않도록 `logs\review_update.lock`으로 한 번에 하나만 실행합니다(앞 실행을 최대 10분 기다림).
 - 두 작업 모두 '절전 해제(WakeToRun)'와 '놓친 일정 바로 실행(StartWhenAvailable)'이 켜져 있어, PC가 절전 중이어도 깨워서 돌립니다(종료·최대 절전·로그아웃 상태는 불가).
 - 기록: `logs\review_YYYYMMDD.log`. SIMS 수집에는 `사전협의\다운로드\sims_register.py`로 등록한 로그인 정보가 필요합니다.
 
@@ -69,5 +77,6 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 ## 설정 (`config.json`)
 - `members[]`: `name`, `email`(로그인 계정), `admin`, `total`(2026년 부여 연차일수), `prior_used`(엑셀 기록 전 사용 일수)
 - `review_file`: 사전협의 접수·검토 현황 엑셀 경로 (`*` 사용 시 파일명이 가장 뒤인 파일)
+- `review_watch_dir`: 실시간 감시할 원드라이브 '26년 검토의견서 폴더 / `review_watch_interval`(기본 30초)·`review_watch_settle`(기본 60초)
 - `supabase_url`, `supabase_key`: Supabase 주소와 공개(publishable) 키
 - 엑셀 경로·포트 변경도 여기서
