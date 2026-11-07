@@ -7,6 +7,8 @@
 - 파일이 새로 생기거나 바뀌거나 지워지면, 올리기가 끝나도록 review_watch_settle초(기본 60초) 동안
   더 바뀌지 않는 것을 확인한 뒤 review_update.py onedrive(원드라이브 수집 → 가공 → HR앱 업로드)를 실행한다.
 - 시작할 때 한 번 갱신한다(꺼져 있던 동안 올라온 파일 반영). 웹 화면은 5분마다·탭을 다시 열 때 새 데이터를 읽는다.
+- SIMS 로그인 유지: sims_keepalive_min분(기본 20분, 0이면 끔)마다 sims_browser.py check를 실행해
+  크롬에 저장한 SIMS 로그인이 시간 초과로 끊기지 않게 한다(로그인 기록이 있을 때만).
 - 기록: logs/review_YYYYMMDD.log
 """
 import os
@@ -68,6 +70,14 @@ def update():
     return res.returncode == 0
 
 
+def sims_keepalive():
+    """SIMS 로그인 유지. 끊겼을 때만 기록한다(처음 한 번)."""
+    res = subprocess.run([sys.executable, str(BASE / "tools" / "sims_browser.py"), "check", "--quiet"], cwd=BASE,
+                         capture_output=True, text=True, encoding="utf-8", errors="replace",
+                         env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    return res.returncode, (res.stdout + res.stderr).strip()
+
+
 def main():
     cfg = server.load_config()
     root = cfg.get("review_watch_dir")
@@ -84,9 +94,21 @@ def main():
     if "--once" in sys.argv:
         return
 
+    keep = max(int(cfg.get("sims_keepalive_min", 20)), 0) * 60
+    sims_state = BASE / ".secret" / "sims_state.json"
+    next_keep, sims_ok = time.monotonic(), True
+
     pending_since = None  # 마지막 변화를 본 시각
     while True:
         time.sleep(interval)
+        if keep and sims_state.exists() and time.monotonic() >= next_keep:
+            next_keep = time.monotonic() + keep
+            code, out = sims_keepalive()
+            if code and sims_ok:
+                log("SIMS 로그인 유지 실패 — " + (out.splitlines()[-1] if out else f"종료코드 {code}"))
+            elif not code and not sims_ok:
+                log("SIMS 로그인 다시 유지됨")
+            sims_ok = code == 0
         try:
             now = snapshot(root)
         except OSError as e:

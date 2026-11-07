@@ -57,6 +57,19 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 - 두 작업 모두 '절전 해제(WakeToRun)'와 '놓친 일정 바로 실행(StartWhenAvailable)'이 켜져 있어, PC가 절전 중이어도 깨워서 돌립니다(종료·최대 절전·로그아웃 상태는 불가).
 - 기록: `logs\review_YYYYMMDD.log`. SIMS 수집에는 `사전협의\다운로드\sims_register.py`로 등록한 로그인 정보가 필요합니다.
 
+## SIMS 로그인 (크롬 로그인 상태 재사용)
+- 비밀번호 대신, 자동 수집 전용 크롬 창에서 사람이 한 번 로그인한 상태(쿠키)를 저장해 씁니다. 인증서·문자 인증이 있어도 됩니다.
+- 준비(한 번): `pip install playwright` — PC에 설치된 Google Chrome을 쓰므로 `playwright install`은 필요 없습니다.
+- 로그인: `tools\sims_login.bat` → 열린 크롬 창에서 SIMS 로그인 → 협의현황이 보이면 콘솔에서 Enter
+  - 평소 쓰는 크롬과 분리된 전용 프로필(`.secret\sims_chrome`)이라 평소 크롬이 켜져 있어도 됩니다.
+  - 저장 위치: `.secret\sims_state.json`, `.secret\sims_cookies.json` (git 제외, 비밀번호는 저장하지 않음)
+- 로그인 유지: 실시간 감시(`review_watch.bat`)가 `sims_keepalive_min`분(기본 20분)마다 SIMS에 접속해 시간 초과로 끊기지 않게 합니다.
+  끊기면 `logs\review_YYYYMMDD.log`에 "SIMS 로그인 유지 실패"가 남습니다 → `sims_login.bat`을 다시 실행하세요.
+- 매일 09:30 수집(`review_update.bat sims`)은 먼저 로그인 상태를 확인·갱신한 뒤 `sims_sync.py`를 실행합니다.
+- 확인: `python tools\sims_browser.py check` (유지 중이면 종료코드 0, 끊겼으면 2) · `python tools\sims_browser.py show` (쿠키 이름·만료)
+- `sims_sync.py`에서 쓰는 법: `sys.path.insert(0, r"<HR앱 폴더>\tools")` 후 `from sims_browser import requests_session` →
+  `requests_session().get(url)` (또는 urllib 요청에 `{"Cookie": cookie_header()}`). 기존 아이디·비밀번호 로그인 부분은 빼면 됩니다.
+
 ## 웹 배포
 - 주소: GitHub Pages(https://kosievalteam.github.io/eval-team-hr/)와 Vercel(프로덕션) 두 곳. 둘 다 `docs/`를 그대로 서비스합니다.
   - Vercel은 GitHub 저장소 연결 방식: main에 푸시되면 자동으로 프로덕션 배포(`vercel.json`: 빌드 없음, 출력 폴더 `docs`).
@@ -77,6 +90,7 @@ OneDrive 팀서무 폴더의 엑셀(기본 데이터)과 웹 입력(Supabase)을
 ## 설정 (`config.json`)
 - `members[]`: `name`, `email`(로그인 계정), `admin`, `total`(2026년 부여 연차일수), `prior_used`(엑셀 기록 전 사용 일수)
 - `review_file`: 사전협의 접수·검토 현황 엑셀 경로 (`*` 사용 시 파일명이 가장 뒤인 파일)
+- `sims_url`: SIMS 첫 화면 주소 / `sims_keepalive_min`: 로그인 유지 간격(분, 0이면 끔)
 - `review_watch_dir`: 실시간 감시할 원드라이브 '26년 검토의견서 폴더 / `review_watch_interval`(기본 30초)·`review_watch_settle`(기본 60초)
 - `supabase_url`, `supabase_key`: Supabase 주소와 공개(publishable) 키
 - 엑셀 경로·포트 변경도 여기서

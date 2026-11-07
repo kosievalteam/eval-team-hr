@@ -24,8 +24,9 @@ LOGS = BASE / "logs"
 LOCK = LOGS / "review_update.lock"
 LOCK_WAIT = 10 * 60   # 앞 실행을 기다리는 최대 시간(초)
 LOCK_STALE = 60 * 60  # 이보다 오래된 잠금은 비정상 종료의 흔적으로 보고 지운다
+SIMS_CHECK = str(BASE / "tools" / "sims_browser.py")  # 크롬에 저장한 SIMS 로그인 확인·쿠키 갱신(.secret/sims_cookies.json)
 STEPS = {
-    "sims": [("SIMS 수집", "sims_sync.py", True), ("원드라이브 수집", "onedrive_sync.py", False), ("가공", "build_dashboard_data.py", True)],
+    "sims": [("SIMS 로그인 확인", [SIMS_CHECK, "check"], False), ("SIMS 수집", "sims_sync.py", True), ("원드라이브 수집", "onedrive_sync.py", False), ("가공", "build_dashboard_data.py", True)],
     "onedrive": [("원드라이브 수집", "onedrive_sync.py", True), ("가공", "build_dashboard_data.py", True)],
 }
 
@@ -91,7 +92,7 @@ def run_mode(mode):
         ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)  # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
     write(f"== 협의검토 갱신({mode}) ==")
     for name, script, required in STEPS[mode]:
-        run(name, [script], collector, required)
+        run(name, script if isinstance(script, list) else [script], collector, required)
     run("HR앱 업로드", ["publish.py", "--no-push"], BASE, True)
     write("완료")
 

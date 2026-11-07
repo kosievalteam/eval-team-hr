@@ -23,5 +23,8 @@
   "_review_watch_help": "review_watch_dir = 원드라이브 '26년 검토의견서 폴더(①~④ 폴더의 상위). tools/review_watch.bat이 감시해 파일이 올라오면 바로 협의검토에 반영",
   "review_watch_dir": "C:\\Users\\user\\OneDrive\\업무자료\\사전협의\\'26년 검토의견서",
   "review_watch_interval": 30,
-  "review_watch_settle": 60
+  "review_watch_settle": 60,
+  "_sims_help": "sims_url = SIMS 첫 화면(로그인 후 협의현황이 보이는 주소면 더 좋음). tools/sims_login.bat으로 크롬에 한 번 로그인, sims_keepalive_min분마다 로그인 유지(0이면 끔)",
+  "sims_url": "https://www.sims.or.kr/",
+  "sims_keepalive_min": 20
 }
