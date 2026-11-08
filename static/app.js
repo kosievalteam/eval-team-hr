@@ -653,10 +653,25 @@ function openWeekSettings(kind, w) {
     onSave: v => must(sb.from("hr_weeks").update(kind === "plan"
       ? { title: v.title, status: v.status, progress_label: v.progress_label, plan_label: v.plan_label }
       : { title: v.title, start_date: nullIfEmpty(v.start), end_date: nullIfEmpty(v.end) }).eq("id", w.sheet)),
-    // 업무가 남아 있는 주차는 지우지 않는다(내용 보존)
-    onDelete: empty && (() => must(sb.from("hr_weeks").delete().eq("id", w.sheet))),
-    deleteLabel: "빈 주차 삭제",
+    // 팀주간업무는 업무가 든 주차도 지울 수 있다(지운 내용은 hr_deleted_weeks에 보관). 개인별 업무는 빈 주차만.
+    onDelete: kind === "plan" ? () => deleteWeek(kind, w, true) : empty && (() => must(sb.from("hr_weeks").delete().eq("id", w.sheet))),
+    deleteLabel: kind === "plan" ? (w.items.length ? `주차 삭제(업무영역 ${w.items.length}개 포함)` : "주차 삭제") : "빈 주차 삭제",
   });
+}
+
+// 주차 삭제(작성자·관리자): 업무영역까지 함께 지우고, 지운 내용은 DB에 따로 보관해 되살릴 수 있게 한다.
+async function deleteWeek(kind, w, fromDialog) {
+  const n = kind === "plan" ? w.items.length : w.tasks.length;
+  const what = kind === "plan" ? "업무영역" : "업무";
+  if (!fromDialog && !confirm(`‘${w.title}’ 주차를 삭제할까요?${n ? `\n안에 있는 ${what} ${n}개도 함께 지워집니다.` : ""}\n(지운 내용은 관리자가 되살릴 수 있게 보관됩니다)`)) return;
+  try {
+    await must(sb.rpc("hr_delete_week", { p_id: w.sheet }));
+    if (kind === "plan") state.weekIdx = 0; else state.pWeek = 0;
+    if (!fromDialog) await load();
+  } catch (err) {
+    if (fromDialog) throw err;
+    alert(`주차를 삭제하지 못했습니다. (${err.message || err})`);
+  }
 }
 
 function renderTasks() {
@@ -694,7 +709,7 @@ function renderTasks() {
         <select id="weekSel">${weeks.map((x, i) => `<option value="${i}" ${i === state.weekIdx ? "selected" : ""}>${esc(x.title)}</option>`).join("")}</select>
         <button class="btn-sec" data-wk="-1" ${state.weekIdx === 0 ? "disabled" : ""}>다음 주 ${ICON.next}</button>
         ${w.status ? pill("s-" + w.status, w.status) : ""}
-        ${canEditWeek(w) ? `<button class="btn-sm" id="btnWeekSet">주차 설정</button>` : ""}
+        ${canEditWeek(w) ? `<button class="btn-sm" id="btnWeekSet">주차 설정</button><button class="btn-sm danger" id="btnWeekDel">주차 삭제</button>` : ""}
         ${final && lead && reviewed < w.items.length ? `<button class="btn-sm" id="btnReviewAll">전체 검토 완료</button>` : ""}
         ${final ? (() => {
           // 버튼은 최종 주차에서 늘 보이고, 팀장 검토가 모두 끝나야 눌린다
@@ -756,6 +771,7 @@ function renderTasks() {
   const nw = $("#btnNewWeekly"); if (nw) nw.onclick = () => openWeekly(weeks[state.weekIdx], null);
   const nk = $("#btnNewWeek"); if (nk) nk.onclick = () => openNewWeek("plan");
   const wsb = $("#btnWeekSet"); if (wsb) wsb.onclick = () => openWeekSettings("plan", weeks[state.weekIdx]);
+  const wdb = $("#btnWeekDel"); if (wdb) wdb.onclick = () => deleteWeek("plan", weeks[state.weekIdx]);
   const setReviewed = async (ids, on, ctl) => {
     ctl.disabled = true;
     try {
