@@ -606,16 +606,21 @@ const canEditWeek = w => !!state.user && (state.user.admin || (w.created_by || "
 function openNewWeek(kind) {
   const list = kind === "plan" ? state.data.weeks : state.data.personal;
   const prev = list[0];
+  // 주간업무계획 초안은 지난 주 '최종'에서 이어받는다(그 주의 '계획' → 이번 주 '진행'). 최종 주차가 없으면 가장 최근 주차.
+  const prevFinal = kind === "plan" ? list.find(w => w.status === "최종") || prev : prev;
+  const srcOf = status => (kind === "plan" && status === "초안" ? prevFinal : prev);
   const mon = nextMonday(kind === "report" && prev?.end ? addDays(prev.end, 1) : state.data.today);
   const { y, m, n } = weekName(mon);
   const md = s => `${parseIso(s).getMonth() + 1}/${parseIso(s).getDate()}`;
   const data = kind === "plan"
     ? { title: `${y}년${m}월${n}주차`, status: "초안", copy: !!prev,
-        progress_label: prev ? prev.plan_label.replace(/^계획/, "진행") : "진행",
+        progress_label: prevFinal ? prevFinal.plan_label.replace(/^계획/, "진행") : "진행",
         plan_label: `계획(${String(m).padStart(2, "0")}월 ${n}주차, ${md(mon)}~)` }
     : { title: `${m}월 ${n}주차`, start: mon, end: addDays(mon, 4), copy: !!prev };
-  const copyHelp = kind === "plan" ? "업무영역·작성자를 가져오고, 지난주 ‘계획’을 이번 주 ‘진행’에 넣습니다."
-    : "완료·중단이 아닌 업무를 그대로 가져옵니다.";
+  const copyLabel = kind === "plan"
+    ? `내용 이어받기 — 초안은 지난 주 최종(‘${prevFinal?.title}’)의 ‘계획’을 이번 주 ‘진행’에 넣습니다`
+      + (prev && prev !== prevFinal ? ` (최종은 ‘${prev.title}’에서 이어받음)` : "")
+    : `‘${prev?.title}’ 내용 이어받기 — 완료·중단이 아닌 업무를 그대로 가져옵니다`;
   openForm({
     title: kind === "plan" ? "새 주차 만들기 · 주간업무계획" : "새 주차 만들기 · 개인별 업무",
     data,
@@ -625,13 +630,13 @@ function openNewWeek(kind) {
         ? [{ name: "status", label: "상태", type: "select", options: ["초안", "최종"] },
            [{ name: "progress_label", label: "왼쪽 열 제목" }, { name: "plan_label", label: "오른쪽 열 제목" }]]
         : [[{ name: "start", label: "시작일", type: "date", required: true }, { name: "end", label: "종료일", type: "date", required: true }]]),
-      ...(prev ? [{ name: "copy", label: `‘${prev.title}’ 내용 이어받기 — ${copyHelp}`, type: "checkbox" }] : []),
+      ...(prev ? [{ name: "copy", label: copyLabel, type: "checkbox" }] : []),
     ],
     onSave: async v => {
       await must(sb.rpc("hr_new_week", {
         p_kind: kind, p_title: v.title, p_status: v.status || "", p_progress_label: v.progress_label || "",
         p_plan_label: v.plan_label || "", p_start: nullIfEmpty(v.start), p_end: nullIfEmpty(v.end),
-        p_copy_from: v.copy ? prev.sheet : null,
+        p_copy_from: v.copy ? srcOf(v.status).sheet : null,
       }));
       if (kind === "plan") state.weekIdx = 0; else state.pWeek = 0;
     },
