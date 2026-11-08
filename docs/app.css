@@ -46,7 +46,7 @@ button, input, select, textarea { font: inherit; }
 .brand-text small { font-size: 12px; color: #8a93a6; }
 .gate-box .brand-logo { margin: 0 auto 4px; border: 1px solid var(--line); }
 .stats-table { font-size: 13px; }
-.nav { padding: 6px 12px; flex: 1; }
+.nav { padding: 6px 12px; flex: 1; min-height: 0; overflow-y: auto; }
 .nav-group { font-size: 11px; color: #7b8498; padding: 16px 12px 4px; }
 .nav a {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
@@ -509,3 +509,11 @@ tbody tr:hover > td { background: #f8faff; }
 /* 선 아이콘 한 벌(lucide 모양): 16px, 선 1.5, 글자색을 따름 */
 .i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
 .datenav button, .btn-sec { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.num-t { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+/* 사무용품 신청대장: 상태(신청 → 확인 → 완료), 확인 체크 */
+.sup-신청 { background: var(--gray-soft); color: var(--muted); }
+.sup-확인 { background: var(--pri-soft); color: var(--pri); }
+.sup-완료 { background: var(--green-soft); color: var(--green); }
+td.ctr, th.ctr { text-align: center; }
+.sup-chk { width: 16px; height: 16px; accent-color: var(--pri); cursor: pointer; }
+.sup-chk:disabled { cursor: default; }

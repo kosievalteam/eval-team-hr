@@ -18,7 +18,7 @@ const state = {
   rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["accepted", -1] },
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", events: "팀 일정", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장", pclog: "공용 PC 사용대장", leave: "복무관리" };
+const PAGES = { dashboard: "대시보드", notices: "공지사항", events: "팀 일정", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장", pclog: "공용 PC 사용대장", supply: "사무용품 신청대장", leave: "복무관리" };
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const $ = (s, el = document) => el.querySelector(s);
@@ -227,7 +227,7 @@ async function fetchBase() {
 }
 
 async function fetchWeb() {
-  const [notices, pclog, leave, weeks, weekly, tasks, review, duty, events] = await Promise.all([
+  const [notices, pclog, leave, weeks, weekly, tasks, review, duty, events, supply] = await Promise.all([
     must(sb.from("hr_notices").select("*")),
     must(sb.from("hr_pc_log").select("*")),
     must(sb.from("hr_leave").select("*")),
@@ -237,8 +237,9 @@ async function fetchWeb() {
     must(sb.from("hr_review").select("*")),
     must(sb.from("hr_duty").select("*")),
     must(sb.from("hr_events").select("*").order("start_date")),
+    must(sb.from("hr_supply").select("*")),
   ]);
-  return { notices, pclog, leave, weeks, weekly, tasks, review, duty, events };
+  return { notices, pclog, leave, weeks, weekly, tasks, review, duty, events, supply };
 }
 
 function merge(d, web) {
@@ -246,6 +247,7 @@ function merge(d, web) {
   const names = new Set(d.members.map(m => m.name));
   d.notices = web.notices;
   d.pclog = web.pclog;
+  d.supply = web.supply;
   d.duty = web.duty[0] || null;
   d.events = web.events;  // 평가팀 주요 일정
 
@@ -463,7 +465,7 @@ function render() {
   document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("active", a.dataset.page === state.page));
   Object.keys(PAGES).forEach(p => ($("#page-" + p).hidden = p !== state.page));
   $("#pageTitle").textContent = PAGES[state.page];
-  ({ dashboard: renderDashboard, notices: renderNotices, events: renderEvents, duty: renderDuty, tasks: renderTasks, personal: renderPersonal, reviews: renderReviews, pclog: renderPcLog, leave: renderLeave })[state.page]();
+  ({ dashboard: renderDashboard, notices: renderNotices, events: renderEvents, duty: renderDuty, tasks: renderTasks, personal: renderPersonal, reviews: renderReviews, pclog: renderPcLog, supply: renderSupply, leave: renderLeave })[state.page]();
 }
 
 /* ------------------------------------------------------------ dashboard */
@@ -1328,6 +1330,100 @@ function openPcLog(r) {
       return r ? must(sb.from("hr_pc_log").update(row).eq("id", r.id)) : must(sb.from("hr_pc_log").insert(row));
     },
     onDelete: r && (() => must(sb.from("hr_pc_log").delete().eq("id", r.id))),
+  });
+}
+
+/* ------------------------------------------------------------ 사무용품 신청대장 */
+// 구분 = 신청 순서(오래된 것부터 1). 금액 = 회원가 × 수량. 신청은 팀원 누구나, 수정·삭제는 본인·관리자.
+const won = n => Number(n || 0).toLocaleString("ko-KR");
+const SUP_STATUS = ["신청", "확인", "완료"];
+const safeUrl = u => (/^https?:\/\//i.test(u || "") ? u : "");
+function renderSupply() {
+  const asc = [...state.data.supply].sort((a, b) => a.req_date.localeCompare(b.req_date) || a.id - b.id);
+  const no = new Map(asc.map((r, i) => [r.id, i + 1]));
+  const months = [...new Set(asc.map(r => r.req_date.slice(0, 7)))];
+  state.supMonth ??= state.data.today.slice(0, 7);
+  const inMonth = asc.filter(r => !state.supMonth || r.req_date.startsWith(state.supMonth));
+  state.supStatus ??= "";
+  const list = inMonth.filter(r => !state.supStatus || r.status === state.supStatus).reverse();
+  const total = list.reduce((t, r) => t + r.price * r.qty, 0);
+  const admin = state.user.admin;
+  const chip = (v, l) => `<button data-sst="${v}" class="${state.supStatus === v ? "on" : ""}">${l} ${v ? inMonth.filter(r => r.status === v).length : inMonth.length}</button>`;
+  $("#page-supply").innerHTML = `
+    <div class="toolbar">
+      <select id="supMonth"><option value="">전체 기간</option>
+        ${[...new Set([state.data.today.slice(0, 7), ...months])].sort().reverse().map(m =>
+          `<option value="${m}" ${m === state.supMonth ? "selected" : ""}>${m.replace("-", "년 ")}월</option>`).join("")}</select>
+      <div class="seg">${chip("", "전체")}${SUP_STATUS.map(x => chip(x, x)).join("")}</div>
+      <span class="muted">${list.length}건 · 합계 <b class="num-t">${won(total)}원</b></span>
+      <button class="btn-sec" style="margin-left:auto" id="btnSupXlsx" ${list.length ? "" : "disabled"}>엑셀 다운로드</button>
+      <button class="btn-pri" id="btnNewSup">+ 신청</button>
+    </div>
+    <div class="card"><div class="table-wrap"><table>
+      <thead><tr><th class="num">구분</th><th>상태</th><th class="ctr">확인</th><th>신청일</th><th>요청자</th><th>상품코드</th><th style="width:34%">상품명</th>
+        <th class="num">회원가</th><th class="num">수량</th><th class="num">금액</th><th>상품 URL</th><th></th></tr></thead>
+      <tbody>${list.length ? list.map(r => `<tr>
+        <td class="num">${no.get(r.id)}</td>
+        <td class="nowrap">${pill("sup-" + r.status, r.status)}</td>
+        <td class="ctr" title="${r.confirmed_by ? esc(`${r.confirmed_by} 확인 · ${fmtDT(r.confirmed_at)}`) : "확인 전"}">
+          <input type="checkbox" class="sup-chk" data-supchk="${r.id}" ${r.status !== "신청" ? "checked" : ""} ${admin && r.status !== "완료" ? "" : "disabled"} aria-label="확인"></td>
+        <td class="nowrap">${esc(r.req_date.replaceAll("-", "."))}</td>
+        <td>${who(r.requester)}</td>
+        <td class="nowrap small">${esc(r.code)}</td>
+        <td>${esc(r.name)}</td>
+        <td class="num nowrap">${won(r.price)}</td>
+        <td class="num">${won(r.qty)}</td>
+        <td class="num nowrap"><b>${won(r.price * r.qty)}</b></td>
+        <td class="nowrap">${safeUrl(r.url) ? `<a class="link" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">상품 보기</a>` : ""}</td>
+        <td class="nowrap">${canEdit(r) ? `<button class="btn-sm" data-supedit="${r.id}">수정</button>` : ""}</td>
+      </tr>`).join("") : `<tr><td colspan="12" class="empty">신청 내역이 없습니다.</td></tr>`}</tbody>
+    </table></div></div>`;
+  $("#supMonth").onchange = ev => { state.supMonth = ev.target.value; renderSupply(); };
+  $("#page-supply").querySelectorAll("[data-sst]").forEach(b => b.onclick = () => { state.supStatus = b.dataset.sst; renderSupply(); });
+  // 확인 체크(관리자): 체크 = 확인, 해제 = 신청으로 되돌림. 확인한 사람·시각은 DB가 기록한다.
+  $("#page-supply").querySelectorAll("[data-supchk]").forEach(c => c.onchange = async () => {
+    c.disabled = true;
+    try {
+      await must(sb.from("hr_supply").update({ status: c.checked ? "확인" : "신청" }).eq("id", Number(c.dataset.supchk)));
+      await load();
+    } catch (err) { alert(err.message || err); c.checked = !c.checked; c.disabled = false; }
+  });
+  $("#btnNewSup").onclick = () => openSupply(null);
+  $("#page-supply").querySelectorAll("[data-supedit]").forEach(b => b.onclick = () =>
+    openSupply(state.data.supply.find(r => r.id === Number(b.dataset.supedit))));
+  $("#btnSupXlsx").onclick = async ev => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    try {
+      await downloadXlsx(`사무용품_신청대장_${state.supMonth || "전체"}.xlsx`, "신청대장",
+        ["구분", "상태", "확인자", "신청일", "요청자", "상품코드", "상품명", "회원가", "수량", "금액", "상품 URL"],
+        [...list].reverse().map(r => [no.get(r.id), r.status, r.confirmed_by || "", r.req_date.replaceAll("-", "."), r.requester, r.code, r.name,
+          r.price, r.qty, r.price * r.qty, r.url]));
+    } catch (err) { alert(`엑셀 파일을 만들지 못했습니다. (${err.message || err})`); }
+    btn.disabled = false;
+  };
+}
+function openSupply(r) {
+  openForm({
+    title: r ? "사무용품 신청 수정" : "사무용품 신청",
+    data: r || { req_date: state.data.today, qty: 1 },
+    fields: [
+      [{ name: "req_date", label: "신청일", type: "date", required: true }, whoField("requester", "요청자", r?.requester)],
+      [{ name: "code", label: "상품코드", placeholder: "예: D19201" }, { name: "url", label: "상품 URL", type: "url", placeholder: "https://…" }],
+      { name: "name", label: "상품명", required: true, placeholder: "예: 드림오피스 리갈패드 A4 노랑 40매 210x297mm" },
+      [{ name: "price", label: "회원가(원)", type: "number", required: true }, { name: "qty", label: "수량", type: "number", required: true }],
+      ...(state.user.admin ? [{ name: "status", label: "상태", type: "select", options: SUP_STATUS, value: "신청" }]
+        : [{ type: "note", help: "상태(신청 → 확인 → 완료)는 관리자가 바꿉니다." }]),
+    ],
+    onSave: v => {
+      const price = Number(String(v.price).replace(/[^\d]/g, "")), qty = Number(v.qty);
+      if (!Number.isInteger(qty) || qty < 1) throw new Error("수량은 1 이상의 정수로 적어 주세요.");
+      if (v.url && !safeUrl(v.url)) throw new Error("상품 URL은 http:// 또는 https://로 시작해야 합니다.");
+      const row = { req_date: v.req_date, requester: v.requester, code: v.code, name: v.name, price, qty, url: v.url,
+        ...(state.user.admin ? { status: v.status } : {}) };
+      return r ? must(sb.from("hr_supply").update(row).eq("id", r.id)) : must(sb.from("hr_supply").insert(row));
+    },
+    onDelete: r && canEdit(r) && (() => must(sb.from("hr_supply").delete().eq("id", r.id))),
   });
 }
 
