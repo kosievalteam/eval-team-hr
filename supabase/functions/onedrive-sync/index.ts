@@ -24,11 +24,10 @@ const RULES: Rule[] = [
   { stages: ["초안", "검토본", "최종(팀장)"], fields: ["수출"], to: "신경희" },
   { stages: ["초안", "검토본", "최종(팀장)"], fields: ["경영", "소상공인"], to: "윤의열" },
   { stages: ["초안", "검토본", "최종(팀장)"], fields: ["금융", "기술", "인력"], to: "이은실" },
-  { stages: ["초안"], fields: ["경영", "창업", "내수", "인력", "수출", "소상공인"], to: "김미정" },
+  { stages: ["초안"], fields: ["경영", "창업", "내수", "인력", "수출"], to: "김미정" },
   { stages: ["수정본"], fields: "*", to: "김미정" },
 ];
-// 임시 파일, '_'로 시작하는 목록 파일(_파일목록.csv 등)은 검토의견서가 아니므로 보지 않는다
-const IGNORE = (n: string) => /^(~\$|\.~|~|_)/.test(n) || /\.(tmp|partial|crdownload|lock)$/i.test(n) || n === "desktop.ini" || n.startsWith(".");
+const IGNORE = (n: string) => /^(~\$|\.~|~)/.test(n) || /\.(tmp|partial|crdownload|lock)$/i.test(n) || n === "desktop.ini" || n.startsWith(".");
 
 function classify(dirs: string[]): { stage: string | null; field: string | null } {
   let i = -1, stage: string | null = null;
