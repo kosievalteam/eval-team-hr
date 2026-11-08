@@ -18,7 +18,7 @@ const state = {
   rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["accepted", -1] },
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", events: "팀 일정", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장", pclog: "공용 PC 사용대장", supply: "사무용품 신청대장", leave: "복무관리" };
+const PAGES = { dashboard: "대시보드", notices: "공지사항", events: "팀 일정", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장", pclog: "공용 PC 사용대장", supply: "사무용품 신청대장", admlog: "사용 로그", leave: "복무관리" };
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const $ = (s, el = document) => el.querySelector(s);
@@ -177,8 +177,8 @@ async function ensureUser() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { await loginGate(msg); continue; }
     const email = session.user.email.toLowerCase();
-    const rows = await must(sb.from("hr_members").select("name,is_admin").eq("email", email).eq("active", true));
-    if (rows.length) return { email, name: rows[0].name, admin: rows[0].is_admin };
+    const rows = await must(sb.from("hr_members").select("name,is_admin,log_viewer").eq("email", email).eq("active", true));
+    if (rows.length) return { email, name: rows[0].name, admin: rows[0].is_admin, logViewer: !!rows[0].log_viewer };
     await sb.auth.signOut();
     msg = `${email} 계정은 팀원 명단에 없습니다. 관리자에게 등록을 요청하세요.`;
   }
@@ -321,6 +321,8 @@ async function load(manual) {
   try {
     if (!state.user) {
       state.user = await ensureUser();
+      logUse("접속", /Mobi|Android|iPhone/i.test(navigator.userAgent) ? "휴대폰" : "PC", "");
+      logUse("화면", PAGES[state.page] || "", "");
       renderUser();
       if (pendingPwReset) askNewPassword();
     }
@@ -345,6 +347,7 @@ function showErrors(list) {
 
 function renderUser() {
   const u = state.user;
+  document.querySelectorAll(".admin-only").forEach(x => (x.hidden = !u.logViewer));
   $("#userBox").innerHTML = `<div class="who"><b>${esc(u.name)}</b>${u.admin ? ` <span class="small">관리자</span>` : ""}</div>
     <button class="link-btn" data-act="pw">비밀번호 변경</button> · <button class="link-btn" data-act="out">로그아웃</button>`;
   $("#userBox [data-act=out]").onclick = async () => { await sb.auth.signOut(); location.reload(); };
@@ -463,9 +466,10 @@ function render() {
   $("#navNotice").textContent = fresh || "";
 
   document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("active", a.dataset.page === state.page));
+  if (state.page === "admlog" && !state.user?.logViewer) state.page = "dashboard";  // 사용 로그는 열람 권한자만
   Object.keys(PAGES).forEach(p => ($("#page-" + p).hidden = p !== state.page));
   $("#pageTitle").textContent = PAGES[state.page];
-  ({ dashboard: renderDashboard, notices: renderNotices, events: renderEvents, duty: renderDuty, tasks: renderTasks, personal: renderPersonal, reviews: renderReviews, pclog: renderPcLog, supply: renderSupply, leave: renderLeave })[state.page]();
+  ({ dashboard: renderDashboard, notices: renderNotices, events: renderEvents, duty: renderDuty, tasks: renderTasks, personal: renderPersonal, reviews: renderReviews, pclog: renderPcLog, supply: renderSupply, admlog: renderAdmLog, leave: renderLeave })[state.page]();
 }
 
 /* ------------------------------------------------------------ dashboard */
@@ -1427,6 +1431,78 @@ function openSupply(r) {
   });
 }
 
+/* ------------------------------------------------------------ 관리자 › 사용 로그 */
+// 접속·화면·반영은 앱이 hr_log()로, 추가·수정·삭제는 DB 트리거가 남긴다. 읽기는 log_viewer(김미정)만(DB 규칙).
+function logUse(kind, target, detail) {
+  sb.rpc("hr_log", { p_kind: kind, p_target: target || "", p_detail: detail || "" }).then(() => {}, () => {});
+}
+const LOG_KINDS = ["접속", "화면", "추가", "수정", "삭제", "반영"];
+const LOG_FIELD = { title: "제목", name: "이름", status: "상태", kind: "구분", note: "메모", start_date: "시작일", end_date: "종료일",
+  body: "내용", important: "중요", progress: "진행", plan: "계획", key: "핵심업무", author: "작성자", reviewed: "팀장 검토",
+  memo: "메모", assignee: "검토자", draft: "초안", draft_review: "검토본", qty: "수량", price: "회원가", requester: "요청자",
+  purpose: "용도", start_at: "사용시작", end_at: "사용종료", hidden: "숨김", content: "내용", due: "마감", data: "표 내용" };
+async function renderAdmLog() {
+  const el = $("#page-admlog");
+  const f = (state.logFilter ??= { days: 7, who: "", kind: "" });
+  el.innerHTML = `<div class="card empty">불러오는 중…</div>`;
+  let q = sb.from("hr_user_log").select("*").order("at", { ascending: false }).limit(3000);
+  if (f.days) q = q.gte("at", new Date(Date.now() - f.days * 864e5).toISOString());
+  let rows;
+  try { rows = await must(q); } catch (err) { el.innerHTML = `<div class="card empty">로그를 불러오지 못했습니다. (${esc(err.message || err)})</div>`; return; }
+  const people = ownerOrder(new Set(rows.map(r => r.name).filter(Boolean)));
+  const list = rows.filter(r => (!f.who || r.name === f.who) && (!f.kind || r.kind === f.kind));
+  const seg = (key, vals) => vals.map(([v, l]) => `<button data-lf="${key}" data-v="${v}" class="${String(f[key]) === String(v) ? "on" : ""}">${l}</button>`).join("");
+  const stamp = ts => { const k = new Date(Date.parse(ts) + 9 * 3600e3).toISOString(); return `${k.slice(5, 10).replace("-", ".")} ${k.slice(11, 16)}`; };
+  // 팀원별: 마지막 접속, 접속 수, 변경(추가·수정·삭제) 수
+  const byWho = state.data.members.map(m => {
+    const mine = rows.filter(r => r.name === m.name);
+    const last = mine.find(r => r.kind === "접속");
+    return { name: m.name, last: last ? stamp(last.at) : "", visits: mine.filter(r => r.kind === "접속").length,
+      edits: mine.filter(r => ["추가", "수정", "삭제", "반영"].includes(r.kind)).length };
+  });
+  const changed = r => r.kind === "수정" && r.data ? `<div class="small muted">바뀐 칸: ${esc(Object.keys(r.data).map(k => LOG_FIELD[k] || k).join(", "))}</div>` : "";
+  el.innerHTML = `
+    <div class="toolbar">
+      <div class="seg">${seg("days", [[1, "오늘"], [7, "7일"], [30, "30일"], [0, "전체"]])}</div>
+      <select id="logWho"><option value="">전체 사용자</option>${people.map(n => `<option ${n === f.who ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+      <div class="seg">${seg("kind", [["", "전체"], ...LOG_KINDS.map(k => [k, k])])}</div>
+      <span class="muted small">${list.length}건${rows.length >= 3000 ? " (최근 3,000건까지)" : ""}</span>
+      <button class="btn-sec" style="margin-left:auto" id="btnLogXlsx" ${list.length ? "" : "disabled"}>엑셀 다운로드</button>
+    </div>
+    <div class="grid g-65">
+      <div class="card"><div class="table-wrap"><table>
+        <thead><tr><th>시각</th><th>사용자</th><th>구분</th><th>대상</th><th style="width:45%">내용</th></tr></thead>
+        <tbody>${list.length ? list.slice(0, 500).map(r => `<tr>
+          <td class="nowrap small">${stamp(r.at)}</td>
+          <td class="nowrap">${r.name ? who(r.name) : `<span class="muted">${esc(r.email || "-")}</span>`}</td>
+          <td class="nowrap">${pill("lg-" + r.kind, r.kind)}</td>
+          <td class="nowrap small">${esc(r.target)}</td>
+          <td class="small">${esc(r.detail)}${changed(r)}</td></tr>`).join("")
+          : `<tr><td colspan="5" class="empty">기록이 없습니다.</td></tr>`}</tbody>
+      </table></div>${list.length > 500 ? `<p class="small muted" style="margin:8px 0 0">화면에는 최근 500건만 보입니다. 전체는 엑셀로 받으세요.</p>` : ""}</div>
+      <div class="card"><div class="card-h"><h2>팀원별 사용</h2><span class="sub">${f.days ? (f.days === 1 ? "오늘" : `최근 ${f.days}일`) : "전체 기간"}</span></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>팀원</th><th>마지막 접속</th><th class="num">접속</th><th class="num">변경</th></tr></thead>
+          <tbody>${byWho.map(x => `<tr><td>${who(x.name)}</td><td class="nowrap small">${x.last || `<span class="muted">없음</span>`}</td>
+            <td class="num">${x.visits}</td><td class="num">${x.edits}</td></tr>`).join("")}</tbody>
+        </table></div></div>
+    </div>`;
+  el.querySelectorAll("[data-lf]").forEach(b => b.onclick = () => {
+    const k = b.dataset.lf; f[k] = k === "days" ? Number(b.dataset.v) : b.dataset.v;
+    renderAdmLog();
+  });
+  $("#logWho").onchange = ev => { f.who = ev.target.value; renderAdmLog(); };
+  $("#btnLogXlsx").onclick = async ev => {
+    const btn = ev.currentTarget; btn.disabled = true;
+    try {
+      await downloadXlsx(`HR앱_사용로그_${state.data.today}.xlsx`, "사용로그", ["시각", "사용자", "이메일", "구분", "대상", "내용", "바뀐 칸(전→후)"],
+        list.map(r => [stamp(r.at), r.name || "", r.email || "", r.kind, r.target, r.detail,
+          r.kind === "수정" && r.data ? Object.entries(r.data).map(([k, [a, b]]) => `${LOG_FIELD[k] || k}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`).join(" / ").slice(0, 2000) : ""]));
+    } catch (err) { alert(`엑셀 파일을 만들지 못했습니다. (${err.message || err})`); }
+    btn.disabled = false;
+  };
+}
+
 /* ------------------------------------------------------------ leave (복무관리) */
 function renderLeave() {
   const el = $("#page-leave");
@@ -1940,6 +2016,7 @@ async function simsPreview({ items, stamp, title }, fileName) {
     try {
       const done = await call(true);
       dlg.close();
+      logUse("반영", "협의검토", `SIMS 엑셀 ${fileName} · ${new Set(done.changes.map(c => c.no)).size}건 갱신 · 새 협의건 ${done.added}건`);
       await load();
       alert(`반영했습니다. ${new Set(done.changes.map(c => c.no)).size}건 갱신 (새 협의건 ${done.added}건).`);
     } catch (err) {
@@ -1977,7 +2054,9 @@ function openReview(r) {
 /* ------------------------------------------------------------ routing */
 function route() {
   const [p, sub] = location.hash.replace("#", "").split("/");
+  const before = state.page;
   state.page = PAGES[p] ? p : "dashboard";
+  if (state.user && state.page !== before) logUse("화면", PAGES[state.page], "");
   if (p === "tasks" && sub === "person") state.page = "personal";  // 예전 주소(개인별 업무 탭)
   if (state.page === "tasks" && ["week", "area"].includes(sub)) state.taskTab = sub;
   if (state.page === "leave" && ["list", "cal"].includes(sub)) state.leaveTab = sub;

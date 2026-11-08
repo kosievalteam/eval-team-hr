@@ -517,3 +517,11 @@ tbody tr:hover > td { background: #f8faff; }
 td.ctr, th.ctr { text-align: center; }
 .sup-chk { width: 16px; height: 16px; accent-color: var(--pri); cursor: pointer; }
 .sup-chk:disabled { cursor: default; }
+/* 관리자 › 사용 로그 */
+.nav a[hidden], .nav-group[hidden] { display: none; }
+.lg-접속 { background: var(--gray-soft); color: var(--muted); }
+.lg-화면 { background: var(--gray-soft); color: var(--muted); }
+.lg-추가 { background: var(--green-soft); color: var(--green); }
+.lg-수정 { background: var(--pri-soft); color: var(--pri); }
+.lg-삭제 { background: var(--red-soft); color: var(--red); }
+.lg-반영 { background: var(--violet-soft); color: var(--violet); }
