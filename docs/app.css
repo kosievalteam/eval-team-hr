@@ -527,3 +527,11 @@ td.ctr, th.ctr { text-align: center; }
 .lg-반영 { background: var(--violet-soft); color: var(--violet); }
 /* 메뉴의 바깥 사이트 링크(새 탭) */
 .nav a.nav-ext .ext-i { width: 12px; height: 12px; margin-left: auto; opacity: .6; }
+/* 업무 › 회의록 */
+.row-link { cursor: pointer; }
+.av-row { display: inline-flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+.mk { background: var(--gray-soft); color: var(--muted); }
+.min-view h3 { margin: 4px 0 8px; font-size: 18px; }
+.min-who { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.min-sec { border-top: 1px solid var(--line); padding-top: 12px; }
+.min-sec h4 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }

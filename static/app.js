@@ -18,7 +18,7 @@ const state = {
   rvFilter: { kind: "", field: "", who: "", stage: "_open", q: "", sort: ["accepted", -1] },
 };
 
-const PAGES = { dashboard: "대시보드", notices: "공지사항", events: "팀 일정", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장", pclog: "공용 PC 사용대장", supply: "사무용품 신청대장", admlog: "사용 로그", leave: "복무관리" };
+const PAGES = { dashboard: "대시보드", notices: "공지사항", events: "팀 일정", tasks: "팀주간업무", personal: "개인별업무", reviews: "협의검토", duty: "업무분장", minutes: "회의록", pclog: "공용 PC 사용대장", supply: "사무용품 신청대장", admlog: "사용 로그", leave: "복무관리" };
 const LEAVE_CATS = ["연차", "오전반차", "오후반차", "공가"];
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const $ = (s, el = document) => el.querySelector(s);
@@ -227,7 +227,7 @@ async function fetchBase() {
 }
 
 async function fetchWeb() {
-  const [notices, pclog, leave, weeks, weekly, tasks, review, duty, events, supply] = await Promise.all([
+  const [notices, pclog, leave, weeks, weekly, tasks, review, duty, events, supply, minutes] = await Promise.all([
     must(sb.from("hr_notices").select("*")),
     must(sb.from("hr_pc_log").select("*")),
     must(sb.from("hr_leave").select("*")),
@@ -238,8 +238,9 @@ async function fetchWeb() {
     must(sb.from("hr_duty").select("*")),
     must(sb.from("hr_events").select("*").order("start_date")),
     must(sb.from("hr_supply").select("*")),
+    must(sb.from("hr_minutes").select("*")),
   ]);
-  return { notices, pclog, leave, weeks, weekly, tasks, review, duty, events, supply };
+  return { notices, pclog, leave, weeks, weekly, tasks, review, duty, events, supply, minutes };
 }
 
 function merge(d, web) {
@@ -248,6 +249,7 @@ function merge(d, web) {
   d.notices = web.notices;
   d.pclog = web.pclog;
   d.supply = web.supply;
+  d.minutes = web.minutes;
   d.duty = web.duty[0] || null;
   d.events = web.events;  // 평가팀 주요 일정
 
@@ -469,7 +471,7 @@ function render() {
   if (state.page === "admlog" && !state.user?.logViewer) state.page = "dashboard";  // 사용 로그는 열람 권한자만
   Object.keys(PAGES).forEach(p => ($("#page-" + p).hidden = p !== state.page));
   $("#pageTitle").textContent = PAGES[state.page];
-  ({ dashboard: renderDashboard, notices: renderNotices, events: renderEvents, duty: renderDuty, tasks: renderTasks, personal: renderPersonal, reviews: renderReviews, pclog: renderPcLog, supply: renderSupply, admlog: renderAdmLog, leave: renderLeave })[state.page]();
+  ({ dashboard: renderDashboard, notices: renderNotices, events: renderEvents, duty: renderDuty, tasks: renderTasks, personal: renderPersonal, reviews: renderReviews, pclog: renderPcLog, supply: renderSupply, minutes: renderMinutes, admlog: renderAdmLog, leave: renderLeave })[state.page]();
 }
 
 /* ------------------------------------------------------------ dashboard */
@@ -1334,6 +1336,95 @@ function openPcLog(r) {
       return r ? must(sb.from("hr_pc_log").update(row).eq("id", r.id)) : must(sb.from("hr_pc_log").insert(row));
     },
     onDelete: r && (() => must(sb.from("hr_pc_log").delete().eq("id", r.id))),
+  });
+}
+
+/* ------------------------------------------------------------ 업무 › 회의록 */
+// 팀원 누구나 읽기·작성, 수정·삭제는 작성자·관리자. 내용 칸은 주간업무처럼 -·○·* 개조식 표시를 살린다.
+const MIN_KINDS = ["팀 회의", "외부 회의", "간담회", "기타"];
+function renderMinutes() {
+  const f = (state.minFilter ??= { kind: "", month: "", q: "" });
+  const all = [...state.data.minutes].sort((a, b) => b.meet_date.localeCompare(a.meet_date) || b.id - a.id);
+  const months = [...new Set(all.map(r => r.meet_date.slice(0, 7)))];
+  const q = f.q.trim().toLowerCase();
+  const list = all.filter(r => (!f.kind || r.kind === f.kind) && (!f.month || r.meet_date.startsWith(f.month))
+    && (!q || [r.title, r.place, r.attendees, r.guests, r.agenda, r.body, r.decisions, r.actions].join("\n").toLowerCase().includes(q)));
+  const chip = (v, l) => `<button data-mk="${esc(v)}" class="${f.kind === v ? "on" : ""}">${esc(l)}</button>`;
+  $("#page-minutes").innerHTML = `
+    <div class="toolbar">
+      <div class="seg">${chip("", "전체")}${MIN_KINDS.map(k => chip(k, k)).join("")}</div>
+      <select id="minMonth"><option value="">전체 기간</option>${months.map(m =>
+        `<option value="${m}" ${m === f.month ? "selected" : ""}>${m.replace("-", "년 ")}월</option>`).join("")}</select>
+      <input id="minQ" placeholder="제목·내용·참석자로 찾기" value="${esc(f.q)}" style="margin-left:auto;min-width:220px">
+      <button class="btn-pri" id="btnNewMin">+ 회의록 작성</button>
+    </div>
+    <div class="card"><div class="table-wrap"><table>
+      <thead><tr><th>회의일</th><th>구분</th><th style="width:40%">제목</th><th>참석자</th><th>작성자</th></tr></thead>
+      <tbody>${list.length ? list.map(r => {
+        const names = splitNames(r.attendees);
+        return `<tr class="row-link" data-min="${r.id}">
+          <td class="nowrap">${esc(r.meet_date.replaceAll("-", "."))}</td>
+          <td class="nowrap">${pill("mk", r.kind)}</td>
+          <td><b>${esc(r.title)}</b>${r.place ? `<div class="pt-desc">${esc(r.place)}</div>` : ""}</td>
+          <td><span class="av-row">${names.slice(0, 6).map(n => avatar(n)).join("")}${names.length > 6 ? `<small class="muted"> 외 ${names.length - 6}</small>` : ""}</span>
+            ${r.guests ? `<div class="pt-desc">외부: ${esc(r.guests)}</div>` : ""}</td>
+          <td class="nowrap small">${esc(r.author)}</td></tr>`;
+      }).join("") : `<tr><td colspan="5" class="empty">${all.length ? "조건에 맞는 회의록이 없습니다." : "아직 회의록이 없습니다. ‘+ 회의록 작성’으로 첫 회의록을 남겨 보세요."}</td></tr>`}</tbody>
+    </table></div></div>`;
+  const el = $("#page-minutes");
+  el.querySelectorAll("[data-mk]").forEach(b => b.onclick = () => { f.kind = b.dataset.mk; renderMinutes(); });
+  $("#minMonth").onchange = ev => { f.month = ev.target.value; renderMinutes(); };
+  $("#minQ").oninput = ev => {
+    f.q = ev.target.value; const pos = ev.target.selectionStart;
+    renderMinutes(); const n = $("#minQ"); n.focus(); n.setSelectionRange(pos, pos);
+  };
+  $("#btnNewMin").onclick = () => editMinutes(null);
+  el.querySelectorAll("[data-min]").forEach(tr => tr.onclick = () => viewMinutes(state.data.minutes.find(r => r.id === Number(tr.dataset.min))));
+}
+// 읽기 화면: 개조식 내용을 보기 좋게. 작성자·관리자에게는 '수정' 버튼
+function viewMinutes(r) {
+  const dlg = $("#formDialog");
+  const sec = (label, text) => text ? `<section class="min-sec"><h4>${label}</h4><div class="txt">${formatTask(text)}</div></section>` : "";
+  const names = splitNames(r.attendees);
+  dlg.style.width = "min(760px, 92vw)";
+  dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true });
+  dlg.innerHTML = `<form method="dialog" class="dlg min-view">
+    <div class="small muted">${esc(r.meet_date.replaceAll("-", "."))} · ${esc(r.kind)}${r.place ? " · " + esc(r.place) : ""}</div>
+    <h3>${esc(r.title)}</h3>
+    <div class="min-who">${names.map(n => `<span class="chip">${avatar(n)}${esc(n)}</span>`).join("")}
+      ${r.guests ? `<span class="small muted">외부 참석: ${esc(r.guests)}</span>` : ""}</div>
+    ${sec("안건", r.agenda)}${sec("회의 내용", r.body)}${sec("결정 사항", r.decisions)}${sec("후속 조치", r.actions)}
+    ${safeUrl(r.link) ? `<p><a class="link" href="${esc(r.link)}" target="_blank" rel="noopener noreferrer">관련 자료 열기</a></p>` : ""}
+    <div class="small muted">작성 ${esc(r.author)} · 마지막 수정 ${esc(fmtDT(r.updated_at))}</div>
+    <div class="dlg-actions">
+      ${canEdit(r) ? `<button type="button" class="btn-sec" data-medit style="margin-right:auto">수정</button>` : ""}
+      <button value="cancel" class="btn-pri">닫기</button></div></form>`;
+  const b = $("[data-medit]", dlg);
+  if (b) b.onclick = () => { dlg.close(); editMinutes(r); };
+  dlg.showModal();
+}
+function editMinutes(r) {
+  const names = state.data.members.map(m => m.name);
+  openForm({
+    title: r ? "회의록 수정" : "회의록 작성",
+    data: r || { meet_date: state.data.today, kind: "팀 회의", attendees: state.user.name },
+    fields: [
+      [{ name: "meet_date", label: "회의일", type: "date", required: true }, { name: "kind", label: "구분", type: "select", options: MIN_KINDS }],
+      { name: "title", label: "제목", required: true, placeholder: "예: 11월 3주차 팀 회의" },
+      [{ name: "place", label: "장소", placeholder: "예: 소회의실, 온라인(Teams)" }, { name: "link", label: "관련 자료 링크", type: "url", placeholder: "https://… (원드라이브 등)" }],
+      { name: "attendees", label: "참석자(팀원)", type: "checks", options: names },
+      { name: "guests", label: "외부 참석자", placeholder: "예: 중기부 홍길동 사무관" },
+      { name: "agenda", label: "안건", type: "textarea", rows: 3 },
+      { name: "body", label: "회의 내용", type: "textarea", rows: 8, help: "줄 앞에 - 또는 ○를 쓰면 항목, *는 세부항목으로 보입니다." },
+      { name: "decisions", label: "결정 사항", type: "textarea", rows: 3 },
+      { name: "actions", label: "후속 조치", type: "textarea", rows: 3, placeholder: "- 담당자: 할 일 (기한)" },
+    ],
+    onSave: v => {
+      if (v.link && !safeUrl(v.link)) throw new Error("관련 자료 링크는 http:// 또는 https://로 시작해야 합니다.");
+      const row = { ...v, ...(r ? {} : { author: state.user.name }) };
+      return r ? must(sb.from("hr_minutes").update(row).eq("id", r.id)) : must(sb.from("hr_minutes").insert(row));
+    },
+    onDelete: r && canEdit(r) && (() => must(sb.from("hr_minutes").delete().eq("id", r.id))),
   });
 }
 
