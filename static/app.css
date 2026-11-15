@@ -525,3 +525,5 @@ td.ctr, th.ctr { text-align: center; }
 .lg-수정 { background: var(--pri-soft); color: var(--pri); }
 .lg-삭제 { background: var(--red-soft); color: var(--red); }
 .lg-반영 { background: var(--violet-soft); color: var(--violet); }
+/* 메뉴의 바깥 사이트 링크(새 탭) */
+.nav a.nav-ext .ext-i { width: 12px; height: 12px; margin-left: auto; opacity: .6; }
