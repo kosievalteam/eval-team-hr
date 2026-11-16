@@ -1709,7 +1709,7 @@ function leaveCalendar(inCard = false) {
     const cls = ["day", cur.getMonth() !== m - 1 && "out", cur.getDay() === 0 && "sun", cur.getDay() === 6 && "sat", d.holidays[s] && "hol", s === d.today && "today"].filter(Boolean).join(" ");
     cells += `<div class="${cls}"><div class="dn">${cur.getDate()}</div>
       ${d.holidays[s] ? `<div class="hn">${esc(d.holidays[s])}</div>` : ""}
-      ${evs.map(e => `<div class="ev t-${esc(e.category)}" title="${esc(e.name + " · " + e.label)}">${esc(e.name)} ${esc(e.category === "시간단위" ? "시간" : e.category === "연차" ? "" : e.category)}</div>`).join("")}
+      ${evs.map(e => `<div class="ev t-${esc(e.category)}" title="${esc(e.name + " · " + e.label)}">${esc(e.name)} ${esc(e.category === "시간단위" ? "시간" : e.category)}</div>`).join("")}
     </div>`;
   }
   const grid = `<div class="cal">${DOW.map(x => `<div class="dow">${x}</div>`).join("")}${cells}</div>`;
