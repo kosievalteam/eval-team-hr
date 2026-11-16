@@ -109,17 +109,21 @@ async function slack(method: string, body: Record<string, unknown> | null, query
   if (!j.ok) throw new Error(`Slack ${method}: ${j.error}`);
   return j;
 }
-async function slackIds(fixed: Record<string, string>) {
+// 받는 사람 Slack ID: hr_onedrive.slack_users {"이름":"U…"}에 모두 있으면 그것만 쓴다(users:read 권한 불필요).
+// 없는 이름이 있을 때만 users.list로 찾는다.
+async function slackIds(fixed: Record<string, string>, names: string[]) {
   const ids: Record<string, string> = {};
-  let cursor = "";
-  do {
-    const j = await slack("users.list", null, `?limit=200${cursor ? "&cursor=" + cursor : ""}`);
-    for (const u of j.members) {
-      if (u.deleted || u.is_bot) continue;
-      for (const n of [u.profile?.display_name, u.profile?.real_name, u.real_name, u.name]) if (n) ids[n.replace(/\s+/g, "")] ??= u.id;
-    }
-    cursor = j.response_metadata?.next_cursor || "";
-  } while (cursor);
+  if (names.some(n => !fixed[n])) {
+    let cursor = "";
+    do {
+      const j = await slack("users.list", null, `?limit=200${cursor ? "&cursor=" + cursor : ""}`);
+      for (const u of j.members) {
+        if (u.deleted || u.is_bot) continue;
+        for (const n of [u.profile?.display_name, u.profile?.real_name, u.real_name, u.name]) if (n) ids[n.replace(/\s+/g, "")] ??= u.id;
+      }
+      cursor = j.response_metadata?.next_cursor || "";
+    } while (cursor);
+  }
   return (name: string) => fixed[name] || ids[name.replace(/\s+/g, "")];
 }
 
@@ -151,7 +155,7 @@ async function sync() {
     for (const r of fresh) for (const who of recipients(r.stage, r.field)) (plan[who] ||= []).push(r);
     if (Object.keys(plan).length) {
       try {
-        const idOf = await slackIds(st.slack_users || {});
+        const idOf = await slackIds(st.slack_users || {}, Object.keys(plan));
         for (const [who, items] of Object.entries(plan)) {
           const uid = idOf(who);
           if (!uid) { errors.push(`Slack에서 '${who}'을(를) 찾지 못함`); continue; }
