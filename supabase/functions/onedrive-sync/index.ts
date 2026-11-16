@@ -20,13 +20,16 @@ const STAGES: [string, string][] = [["최종", "최종(팀장)"], ["수정", "�
 const STAGE_KEY: Record<string, string> = { "초안": "draft", "검토본": "draft_review", "수정본": "revised", "최종(팀장)": "final" };
 type Rule = { stages: string[]; fields: string[] | "*"; to: string };
 const RULES: Rule[] = [
-  { stages: ["초안", "검토본", "최종(팀장)"], fields: ["창업", "내수"], to: "장채윤" },
-  { stages: ["초안", "검토본", "최종(팀장)"], fields: ["수출"], to: "신경희" },
-  { stages: ["초안", "검토본", "최종(팀장)"], fields: ["경영", "소상공인"], to: "윤의열" },
-  { stages: ["초안", "검토본", "최종(팀장)"], fields: ["금융", "기술", "인력"], to: "이은실" },
+  { stages: ["검토본", "최종(팀장)"], fields: ["창업", "내수"], to: "장채윤" },
+  { stages: ["검토본", "최종(팀장)"], fields: ["수출"], to: "신경희" },
+  { stages: ["검토본", "최종(팀장)"], fields: ["경영", "소상공인"], to: "윤의열" },
+  { stages: ["검토본", "최종(팀장)"], fields: ["금융", "기술", "인력"], to: "이은실" },
   { stages: ["초안"], fields: ["경영", "창업", "내수", "인력", "수출"], to: "김미정" },
+  { stages: ["초안"], fields: ["소상공인", "금융"], to: "박해연" },
   { stages: ["수정본"], fields: "*", to: "김미정" },
 ];
+// 알림을 보내지 않는 폴더(단계 날짜 계산에는 그대로 쓴다): ⑤ 시스템 업로드_최종본
+const NO_NOTIFY = (path: string) => /시스템\s*업로드/.test(path.split("/")[0]);
 const IGNORE = (n: string) => /^(~\$|\.~|~)/.test(n) || /\.(tmp|partial|crdownload|lock)$/i.test(n) || n === "desktop.ini" || n.startsWith(".");
 
 function classify(dirs: string[]): { stage: string | null; field: string | null } {
@@ -152,7 +155,7 @@ async function sync() {
   const errors: string[] = [];
   if (st.baseline_done && fresh.length) {
     const plan: Record<string, typeof fresh> = {};
-    for (const r of fresh) for (const who of recipients(r.stage, r.field)) (plan[who] ||= []).push(r);
+    for (const r of fresh) if (!NO_NOTIFY(r.path)) for (const who of recipients(r.stage, r.field)) (plan[who] ||= []).push(r);
     if (Object.keys(plan).length) {
       try {
         const idOf = await slackIds(st.slack_users || {}, Object.keys(plan));
