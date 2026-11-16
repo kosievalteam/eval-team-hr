@@ -143,6 +143,7 @@ button, input, select, textarea { font: inherit; }
 .t-시간단위 { background: var(--pri-soft); color: var(--pri); }
 .t-공가 { background: var(--violet-soft); color: var(--violet); }
 .t-출장 { background: #e3f5f8; color: #0f8aa0; }
+.t-외부활동 { background: #def3f0; color: #11766d; }
 .t-기타 { background: var(--gray-soft); color: var(--muted); }
 .s-예정 { background: var(--pri-soft); color: var(--pri); }
 .s-진행중 { background: var(--amber-soft); color: var(--amber); }

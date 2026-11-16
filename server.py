@@ -75,7 +75,7 @@ def classify(raw, hours_per_day):
     """'시간단위휴가(10:00~14:00), 대외활동(14:00~15:30)' 같은 구분값을 해석한다.
 
     반환: (category, per_day_deduction, trip, label)
-      category: 연차 | 오전반차 | 오후반차 | 시간단위 | 공가 | 출장 | 기타
+      category: 연차 | 오전반차 | 오후반차 | 시간단위 | 공가 | 출장 | 외부활동 | 기타
     """
     text = str(raw).strip()
     deduct, trip, cats = 0.0, False, []
@@ -93,11 +93,13 @@ def classify(raw, hours_per_day):
                 deduct += hours_between(tm) / hours_per_day
         elif part.startswith("공가") or part.startswith("병가") or part.startswith("경조"):
             cats.append("공가")
-        elif "출장" in part or "대외활동" in part or "외근" in part or "교육" in part:
+        elif "출장" in part:
             cats.append("출장"); trip = True
+        elif "대외활동" in part or "외근" in part or "교육" in part:
+            cats.append("외부활동"); trip = True
         else:
             cats.append("기타")
-    order = ["연차", "오전반차", "오후반차", "공가", "시간단위", "출장", "기타"]
+    order = ["연차", "오전반차", "오후반차", "공가", "시간단위", "출장", "외부활동", "기타"]
     category = next((c for c in order if c in cats), "기타")
     return category, round(deduct, 4), trip, text
 

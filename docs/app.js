@@ -200,10 +200,11 @@ function classify(raw, hpd) {
       if (tm) deduct += Math.max(0, (+tm[3] * 60 + +tm[4] - +tm[1] * 60 - +tm[2]) / 60) / hpd;
     }
     else if (/^(공가|병가|경조)/.test(part)) cats.push("공가");
-    else if (/출장|대외활동|외근|교육/.test(part)) { cats.push("출장"); trip = true; }
+    else if (/출장/.test(part)) { cats.push("출장"); trip = true; }
+    else if (/대외활동|외근|교육/.test(part)) { cats.push("외부활동"); trip = true; }  // 근무현황에 '외부활동'으로 표시
     else cats.push("기타");
   });
-  const category = ["연차", "오전반차", "오후반차", "공가", "시간단위", "출장", "기타"].find(c => cats.includes(c)) || "기타";
+  const category = ["연차", "오전반차", "오후반차", "공가", "시간단위", "출장", "외부활동", "기타"].find(c => cats.includes(c)) || "기타";
   return { category, perDay: Math.round(deduct * 10000) / 10000, trip, label: String(raw).trim() };
 }
 function businessDays(start, end, holidays) {
@@ -1682,7 +1683,7 @@ function leaveList() {
       <tbody>${list.map(e => `<tr>
         <td>${pill("s-" + entryStatus(e), entryStatus(e))}</td>
         <td>${who(e.name)}${webTag(e)}</td>
-        <td>${pill("t-" + e.category, e.category)}${e.trip && e.category !== "출장" ? " " + pill("t-출장", "외부") : ""}</td>
+        <td>${pill("t-" + e.category, e.category)}${e.trip && !["출장", "외부활동"].includes(e.category) ? " " + pill("t-외부활동", "외부") : ""}</td>
         <td>${fmtPeriod(e)}</td>
         <td class="num">${e.workdays}일</td>
         <td class="num">${e.deduct ? fmtDays(e.deduct) : "-"}</td>
