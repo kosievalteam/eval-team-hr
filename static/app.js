@@ -26,6 +26,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const ICON = {
   prev: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
   next: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
+  clip: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>',
 };
 
 /* ------------------------------------------------------------ utils */
@@ -380,12 +381,16 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
       const [val, lbl] = Array.isArray(o) ? o : [o, o];
       return `<option value="${esc(val)}" ${String(val) === String(v) ? "selected" : ""}>${esc(lbl)}</option>`;
     }).join("")}</select>`;
-    // checks: 여러 개를 고르는 체크박스 묶음. 값은 "가, 나"처럼 쉼표로 이은 글자
+    // checks: 여러 개를 고르는 체크박스 묶음. 값은 "가, 나"처럼 쉼표로 이은 글자. 보기는 "글자" 또는 [값, 보이는 글자]
     else if (f.type === "checks") {
       const on = new Set(splitNames(v));
-      return `<div class="chk-group"><span>${esc(f.label)}</span><div class="chk-list">${f.options.map(o =>
-        `<label class="chk-pill"><input type="checkbox" name="${f.name}" value="${esc(o)}" ${on.has(o) ? "checked" : ""}>${esc(o)}</label>`).join("")}</div></div>`;
+      return `<div class="chk-group"><span>${esc(f.label)}</span><div class="chk-list">${f.options.map(o => {
+        const [val, lbl] = Array.isArray(o) ? o : [o, o];
+        return `<label class="chk-pill"><input type="checkbox" name="${f.name}" value="${esc(val)}" ${on.has(val) ? "checked" : ""}>${esc(lbl)}</label>`;
+      }).join("")}</div></div>`;
     }
+    // file: 파일 고르기(여러 개). 값은 File 배열
+    else if (f.type === "file") input = `<input name="${f.name}" type="file" multiple>`;
     else if (f.type === "checkbox") return `<label class="chk"><input type="checkbox" name="${f.name}" ${v ? "checked" : ""}> ${esc(f.label)}</label>`;
     else input = `<input name="${f.name}" type="${f.type || "text"}" value="${esc(v)}" ${req} placeholder="${esc(f.placeholder || "")}" ${f.list ? `list="dl-${f.name}"` : ""}>`
       + (f.list ? `<datalist id="dl-${f.name}">${f.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>` : "");
@@ -422,7 +427,7 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
         return;
       }
       const el = form.elements[f.name];
-      v[f.name] = f.type === "checkbox" ? el.checked : el.value.trim();
+      v[f.name] = f.type === "checkbox" ? el.checked : f.type === "file" ? [...el.files] : el.value.trim();
     });
     run(() => onSave(v));
   };
@@ -1342,6 +1347,28 @@ function openPcLog(r) {
 /* ------------------------------------------------------------ 업무 › 회의록 */
 // 팀원 누구나 읽기·작성, 수정·삭제는 작성자·관리자. 내용 칸은 주간업무처럼 -·○·* 개조식 표시를 살린다.
 const MIN_KINDS = ["팀 회의", "외부 회의", "간담회", "기타"];
+// 첨부 파일: 비공개 저장소 hr-minutes에 '<회의록 id>/<무작위 id>.<확장자>'로 두고, 원래 이름은 files 칸에 둔다.
+const MIN_BUCKET = "hr-minutes", MIN_FILE_MAX = 20 * 1024 * 1024;
+const fileSize = n => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+async function uploadMinuteFile(id, file) {
+  const key = crypto.randomUUID();
+  const ext = (file.name.match(/\.([A-Za-z0-9]{1,8})$/) || [])[1];
+  const path = `${id}/${key}${ext ? "." + ext.toLowerCase() : ""}`;
+  const { error } = await sb.storage.from(MIN_BUCKET).upload(path, file, { contentType: file.type || "application/octet-stream" });
+  if (error) throw new Error(`‘${file.name}’을(를) 올리지 못했습니다. (${error.message})`);
+  return { key, path, name: file.name, size: file.size, by: state.user.name, at: new Date().toISOString() };
+}
+// 내려받기: 1분짜리 서명 링크(원래 파일 이름으로 저장)
+async function downloadMinuteFile(f, btn) {
+  if (!f) return;
+  btn.disabled = true;
+  try {
+    const { data, error } = await sb.storage.from(MIN_BUCKET).createSignedUrl(f.path, 60, { download: f.name });
+    if (error) throw new Error(error.message);
+    const a = document.createElement("a"); a.href = data.signedUrl; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove();
+  } catch (err) { alert(`파일을 내려받지 못했습니다. (${err.message || err})`); }
+  btn.disabled = false;
+}
 function renderMinutes() {
   const f = (state.minFilter ??= { kind: "", month: "", q: "" });
   const all = [...state.data.minutes].sort((a, b) => b.meet_date.localeCompare(a.meet_date) || b.id - a.id);
@@ -1365,7 +1392,7 @@ function renderMinutes() {
         return `<tr class="row-link" data-min="${r.id}">
           <td class="nowrap">${esc(r.meet_date.replaceAll("-", "."))}</td>
           <td class="nowrap">${pill("mk", r.kind)}</td>
-          <td><b>${esc(r.title)}</b>${r.place ? `<div class="pt-desc">${esc(r.place)}</div>` : ""}</td>
+          <td><b>${esc(r.title)}</b>${(r.files || []).length ? ` <span class="att-n" title="첨부 ${r.files.length}개">${ICON.clip}${r.files.length}</span>` : ""}${r.place ? `<div class="pt-desc">${esc(r.place)}</div>` : ""}</td>
           <td><span class="av-row">${names.slice(0, 6).map(n => avatar(n)).join("")}${names.length > 6 ? `<small class="muted"> 외 ${names.length - 6}</small>` : ""}</span>
             ${r.guests ? `<div class="pt-desc">외부: ${esc(r.guests)}</div>` : ""}</td>
           <td class="nowrap small">${esc(r.author)}</td></tr>`;
@@ -1394,6 +1421,8 @@ function viewMinutes(r) {
     <div class="min-who">${names.map(n => `<span class="chip">${avatar(n)}${esc(n)}</span>`).join("")}
       ${r.guests ? `<span class="small muted">외부 참석: ${esc(r.guests)}</span>` : ""}</div>
     ${sec("안건", r.agenda)}${sec("회의 내용", r.body)}${sec("결정 사항", r.decisions)}${sec("후속 조치", r.actions)}
+    ${(r.files || []).length ? `<section class="min-sec"><h4>첨부 파일</h4><ul class="att-list">${r.files.map(f =>
+      `<li><button type="button" class="link att-dl" data-file="${esc(f.key)}">${ICON.clip}${esc(f.name)}</button><span class="small muted">${fileSize(f.size)} · ${esc(f.by || "")}</span></li>`).join("")}</ul></section>` : ""}
     ${safeUrl(r.link) ? `<p><a class="link" href="${esc(r.link)}" target="_blank" rel="noopener noreferrer">관련 자료 열기</a></p>` : ""}
     <div class="small muted">작성 ${esc(r.author)} · 마지막 수정 ${esc(fmtDT(r.updated_at))}</div>
     <div class="dlg-actions">
@@ -1401,6 +1430,7 @@ function viewMinutes(r) {
       <button value="cancel" class="btn-pri">닫기</button></div></form>`;
   const b = $("[data-medit]", dlg);
   if (b) b.onclick = () => { dlg.close(); editMinutes(r); };
+  dlg.querySelectorAll("[data-file]").forEach(x => x.onclick = () => downloadMinuteFile(r.files.find(f => f.key === x.dataset.file), x));
   dlg.showModal();
 }
 function editMinutes(r) {
@@ -1418,13 +1448,32 @@ function editMinutes(r) {
       { name: "body", label: "회의 내용", type: "textarea", rows: 8, help: "줄 앞에 - 또는 ○를 쓰면 항목, *는 세부항목으로 보입니다." },
       { name: "decisions", label: "결정 사항", type: "textarea", rows: 3 },
       { name: "actions", label: "후속 조치", type: "textarea", rows: 3, placeholder: "- 담당자: 할 일 (기한)" },
+      ...(r && (r.files || []).length ? [{ name: "keep", label: "첨부 파일 (체크를 풀면 저장할 때 삭제)", type: "checks",
+        options: r.files.map(f => [f.key, `${f.name} (${fileSize(f.size)})`]), value: r.files.map(f => f.key).join(", ") }] : []),
+      { name: "newfiles", label: "파일 첨부", type: "file", help: "여러 개를 한 번에 고를 수 있습니다. 파일 하나는 20MB까지." },
     ],
-    onSave: v => {
+    onSave: async v => {
       if (v.link && !safeUrl(v.link)) throw new Error("관련 자료 링크는 http:// 또는 https://로 시작해야 합니다.");
-      const row = { ...v, ...(r ? {} : { author: state.user.name }) };
-      return r ? must(sb.from("hr_minutes").update(row).eq("id", r.id)) : must(sb.from("hr_minutes").insert(row));
+      const add = v.newfiles || [];
+      const big = add.find(f => f.size > MIN_FILE_MAX);
+      if (big) throw new Error(`‘${big.name}’은(는) 20MB를 넘습니다. 원드라이브에 올리고 ‘관련 자료 링크’로 연결하세요.`);
+      const keep = new Set(splitNames(v.keep));
+      const { keep: _k, newfiles: _n, ...row } = v;
+      if (!r) row.author = state.user.name;
+      const id = r ? r.id : (await must(sb.from("hr_minutes").insert(row).select("id").single())).id;
+      const kept = r ? (r.files || []).filter(f => keep.has(f.key)) : [];
+      const gone = r ? (r.files || []).filter(f => !keep.has(f.key)) : [];
+      const uploaded = [];
+      for (const file of add) uploaded.push(await uploadMinuteFile(id, file));
+      if (gone.length) await sb.storage.from(MIN_BUCKET).remove(gone.map(f => f.path));
+      const files = [...kept, ...uploaded];
+      if (r) return must(sb.from("hr_minutes").update({ ...row, files }).eq("id", id));
+      if (files.length) return must(sb.from("hr_minutes").update({ files }).eq("id", id));
     },
-    onDelete: r && canEdit(r) && (() => must(sb.from("hr_minutes").delete().eq("id", r.id))),
+    onDelete: r && canEdit(r) && (async () => {
+      if ((r.files || []).length) await sb.storage.from(MIN_BUCKET).remove(r.files.map(f => f.path));
+      return must(sb.from("hr_minutes").delete().eq("id", r.id));
+    }),
   });
 }
 

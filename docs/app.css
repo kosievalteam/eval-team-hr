@@ -535,3 +535,10 @@ td.ctr, th.ctr { text-align: center; }
 .min-who { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .min-sec { border-top: 1px solid var(--line); padding-top: 12px; }
 .min-sec h4 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+/* 회의록 첨부 */
+.att-n { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.att-n .i { width: 13px; height: 13px; }
+.att-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.att-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.att-dl { display: inline-flex; align-items: center; gap: 4px; padding: 0; font-size: 14px; text-align: left; overflow-wrap: anywhere; }
+.dlg input[type=file] { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; background: #fafbfc; }
