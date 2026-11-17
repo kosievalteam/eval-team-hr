@@ -634,7 +634,7 @@ function openNewWeek(kind) {
   const copyLabel = kind === "plan"
     ? `내용 이어받기 — 초안은 지난 주 최종(‘${prevFinal?.title}’)의 ‘계획’을 이번 주 ‘진행’에 넣습니다`
       + (prev && prev !== prevFinal ? ` (최종은 ‘${prev.title}’에서 이어받음)` : "")
-    : `‘${prev?.title}’ 내용 이어받기 — 완료·중단이 아닌 업무를 그대로 가져옵니다`;
+    : `‘${prev?.title}’ 내용 이어받기 — 완료·중단이 아닌 업무를 그대로 가져옵니다 (끄더라도 완료예정일이 새 주차 이후인 업무는 자동으로 들어갑니다)`;
   openForm({
     title: kind === "plan" ? "새 주차 만들기 · 주간업무계획" : "새 주차 만들기 · 개인별 업무",
     data,
@@ -1189,7 +1189,7 @@ function personalView() {
       <div class="card stat"><div><div class="num">${base.filter(isOverdue).length}</div><div class="lbl">기한초과 (완료예정일 경과)</div></div></div>
     </div>
     ${main}
-    <p class="small muted">※ 본인 업무는 ‘수정’으로 고칠 수 있습니다(관리자는 모든 업무). 새 주차를 만들면 이전 주의 진행 중인 업무를 이어받을 수 있습니다.</p>`;
+    <p class="small muted">※ 본인 업무는 ‘수정’으로 고칠 수 있습니다(관리자는 모든 업무). 새 주차를 만들면 이전 주의 진행 중인 업무를 이어받을 수 있습니다. 완료예정일이 그 주 뒤인 업무는 다음 주차에 자동으로 들어갑니다(뒤 주차가 이미 있으면 바로, 없으면 새 주차를 만들 때).</p>`;
 }
 
 function bindPersonal(el) {
@@ -1227,7 +1227,7 @@ function openTask(w, t) {
       { name: "content", label: "내용", type: "textarea", rows: 3 },
       [{ name: "priority", label: "우선순위", type: "select", options: [["4", "★★★★"], ["3", "★★★"], ["2", "★★"], ["1", "★"], ["0", "없음"]] },
        { name: "start", label: "시작일", type: "date" }],
-      [{ name: "due", label: "완료예정일", type: "date" }, { name: "done", label: "완료일", type: "date" }],
+      [{ name: "due", label: "완료예정일", type: "date", help: "이번 주 뒤로 잡으면 다음 주차에도 자동으로 들어갑니다" }, { name: "done", label: "완료일", type: "date" }],
       { name: "result", label: "결과", type: "textarea", rows: 2 },
       { name: "memo", label: "메모" },
     ],
