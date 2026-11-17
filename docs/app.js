@@ -935,6 +935,8 @@ function fillHwpCell(tc, lines, blue, compare) {
     sub.insertBefore(p, anchor || null);
   });
   if (anchor && lines.length) sub.insertBefore(spacer.cloneNode(true), anchor);  // 진행현황 앞 빈 줄
+  // 빈 칸(초안에서 아직 안 쓴 계획 등)도 문단이 하나는 있어야 한다. 문단 없는 칸은 한글이 파일을 열지 못한다.
+  if (!hxKids(sub, "p").length) sub.appendChild(spacer.cloneNode(true));
 }
 function hwpWeekInfo(w) {
   const m = w.title.match(/(\d{2})년\s*(\d{1,2})월\s*([\d·,]+)주차/) || [];
