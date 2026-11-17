@@ -718,7 +718,7 @@ function renderTasks() {
     const written = w.items.filter(it => it.author).length;
     const reviewed = w.items.filter(it => it.reviewed).length;
     // 팀장 검토는 '최종' 주차에서 관리자(팀장)가 업무영역별로 체크한다.
-    const final = w.status === "최종", lead = state.user.admin;
+    const final = w.status === "최종", draft = w.status === "초안", lead = state.user.admin;
     const reviewMark = it => !final ? ""
       : lead ? `<label class="chk review-chk"><input type="checkbox" data-review="${it.wid}" ${it.reviewed ? "checked" : ""}> 팀장 검토</label>`
       : it.reviewed ? pill("s-최종", "팀장 검토 완료") : pill("s-완료", "검토 전");
@@ -730,13 +730,14 @@ function renderTasks() {
         ${w.status ? pill("s-" + w.status, w.status) : ""}
         ${canEditWeek(w) ? `<button class="btn-sm" id="btnWeekSet">주차 설정</button><button class="btn-sm danger" id="btnWeekDel">주차 삭제</button>` : ""}
         ${final && lead && reviewed < w.items.length ? `<button class="btn-sm" id="btnReviewAll">전체 검토 완료</button>` : ""}
-        ${final ? (() => {
-          // 버튼은 최종 주차에서 늘 보이고, 팀장 검토가 모두 끝나야 눌린다
-          const ready = w.items.length && reviewed === w.items.length;
-          const tip = ready ? "한글(HWPX) 양식 그대로 내려받기" : `팀장 검토가 모두 끝나면 내려받을 수 있습니다 (${reviewed}/${w.items.length})`;
+        ${final || draft ? (() => {
+          // 초안 주차는 언제든 내려받는다(파일 이름에 '초안'). 최종 주차는 팀장 검토가 모두 끝나야 눌린다
+          const ready = draft ? w.items.length > 0 : w.items.length && reviewed === w.items.length;
+          const tip = draft ? "초안을 한글(HWPX) 양식으로 내려받기 (팀장 검토 전)"
+            : ready ? "한글(HWPX) 양식 그대로 내려받기" : `팀장 검토가 모두 끝나면 내려받을 수 있습니다 (${reviewed}/${w.items.length})`;
           return `<button class="btn-sm btn-hwp" id="btnHwpPlan" title="${tip}" ${ready ? "" : "disabled"}>주간업무계획(한글)</button>
             <button class="btn-sm btn-hwp key" id="btnHwpKey" title="${tip}" ${ready ? "" : "disabled"}>핵심업무계획(한글)</button>
-            ${ready ? "" : `<span class="small muted">팀장 검토 ${reviewed}/${w.items.length} 완료 후 다운로드</span>`}`;
+            ${ready || draft ? "" : `<span class="small muted">팀장 검토 ${reviewed}/${w.items.length} 완료 후 다운로드</span>`}`;
         })() : ""}
         <input id="taskQ" placeholder="검색 (업무·키워드·작성자)" value="${esc(state.taskQuery)}" style="margin-left:auto;min-width:220px">
         <button class="btn-sec" id="btnNewWeek">+ 새 주차</button>
@@ -1031,7 +1032,7 @@ async function downloadHwpx(build, w, btn) {
     const t = state.data.today.replace(/-/g, "").slice(2);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `#${t}_${name}.hwpx`;
+    a.download = `#${t}_${name}${w.status === "초안" ? "_초안" : ""}.hwpx`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   } catch (err) { alert(`한글 파일을 만들지 못했습니다. (${err.message || err})`); }
