@@ -287,7 +287,7 @@ function merge(d, web) {
     const w = pBySheet[r.sheet];
     if (w) w.tasks.push({ owner: r.owner, name: r.name, content: r.content, priority: r.priority, status: r.status,
       start: r.start_date || "", due: r.due || "", done: r.done || "", result: r.result, memo: r.memo,
-      wid: r.id, created_by: r.created_by });
+      wid: r.id, created_by: r.created_by, hidden: !!r.hidden });
   });
 
   const ov = Object.fromEntries(web.review.map(r => [r.no, r]));
@@ -1134,7 +1134,7 @@ function personalView() {
         ${showWeek ? `<td class="small nowrap">${esc(t.week.title)}</td>` : ""}
         ${showOwner ? `<td>${who(t.owner)}</td>` : ""}
         <td>${stars(t.priority)}</td>
-        <td><div class="pt-name">${hl(t.name || "(업무명 없음)")}${canEdit(t) ? ` <button class="btn-sm" data-tedit="${t.wid}">수정</button>` : ""}</div>${t.content ? `<div class="pt-desc">${hl(t.content)}</div>` : ""}</td>
+        <td><div class="pt-name">${t.hidden ? `<span class="pill t-기타 lock" title="팀장과 담당자만 볼 수 있습니다">팀장만 보기</span> ` : ""}${hl(t.name || "(업무명 없음)")}${canEdit(t) ? ` <button class="btn-sm" data-tedit="${t.wid}">수정</button>` : ""}</div>${t.content ? `<div class="pt-desc">${hl(t.content)}</div>` : ""}</td>
         <td class="nowrap">${pill(P_STATUS_CLS[t.status] || "t-기타", t.status)}${isOverdue(t) ? " " + pill("imp", "기한초과") : ""}</td>
         <td class="small nowrap">${t.start || t.due ? `${t.start ? fmtDate(t.start) : ""} ~ ${t.due ? fmtDate(t.due) : ""}` : "-"}</td>
         <td class="small nowrap">${t.done ? fmtDate(t.done) : "-"}</td>
@@ -1189,7 +1189,7 @@ function personalView() {
       <div class="card stat"><div><div class="num">${base.filter(isOverdue).length}</div><div class="lbl">기한초과 (완료예정일 경과)</div></div></div>
     </div>
     ${main}
-    <p class="small muted">※ 본인 업무는 ‘수정’으로 고칠 수 있습니다(관리자는 모든 업무). 새 주차를 만들면 이전 주의 진행 중인 업무를 이어받을 수 있습니다. 완료예정일이 그 주 뒤인 업무는 다음 주차에 자동으로 들어갑니다(뒤 주차가 이미 있으면 바로, 없으면 새 주차를 만들 때).</p>`;
+    <p class="small muted">※ 본인 업무는 ‘수정’으로 고칠 수 있습니다(관리자는 모든 업무). 새 주차를 만들면 이전 주의 진행 중인 업무를 이어받을 수 있습니다. 완료예정일이 그 주 뒤인 업무는 다음 주차에 자동으로 들어갑니다(뒤 주차가 이미 있으면 바로, 없으면 새 주차를 만들 때). ‘팀장만 보기’로 표시한 업무는 팀장과 담당자에게만 보입니다.</p>`;
 }
 
 function bindPersonal(el) {
@@ -1230,10 +1230,12 @@ function openTask(w, t) {
       [{ name: "due", label: "완료예정일", type: "date", help: "이번 주 뒤로 잡으면 다음 주차에도 자동으로 들어갑니다" }, { name: "done", label: "완료일", type: "date" }],
       { name: "result", label: "결과", type: "textarea", rows: 2 },
       { name: "memo", label: "메모" },
+      { name: "hidden", label: "팀장만 보기 — 다른 팀원에게는 이 업무를 숨깁니다(팀장과 담당자만 봄)", type: "checkbox" },
     ],
     onSave: v => {
       const row = { owner: v.owner, status: v.status, name: v.name, content: v.content, priority: Number(v.priority),
-        start_date: nullIfEmpty(v.start), due: nullIfEmpty(v.due), done: nullIfEmpty(v.done), result: v.result, memo: v.memo };
+        start_date: nullIfEmpty(v.start), due: nullIfEmpty(v.due), done: nullIfEmpty(v.done), result: v.result, memo: v.memo,
+        hidden: !!v.hidden };
       return t ? must(sb.from("hr_tasks").update(row).eq("id", t.wid)) : must(sb.from("hr_tasks").insert({ ...row, sheet: w.sheet }));
     },
     onDelete: t && (() => must(sb.from("hr_tasks").delete().eq("id", t.wid))),
