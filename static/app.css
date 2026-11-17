@@ -544,3 +544,14 @@ td.ctr, th.ctr { text-align: center; }
 .att-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .att-dl { display: inline-flex; align-items: center; gap: 4px; padding: 0; font-size: 14px; text-align: left; overflow-wrap: anywhere; }
 .dlg input[type=file] { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; background: #fafbfc; }
+/* 회의록 개조식: 기호 그대로 + 단계별 들여쓰기(내어쓰기) */
+.min-txt { line-height: 1.65; word-break: keep-all; overflow-wrap: anywhere; }
+.mx { display: flex; gap: 6px; }
+.mx-sym { flex: none; min-width: 1em; color: #3a4252; }
+.mx-0 { font-weight: 700; margin-top: 10px; }
+.mx-1 { font-weight: 600; margin-top: 6px; padding-left: 12px; }
+.mx-2 { padding-left: 28px; color: #3a4252; }
+.mx-3 { padding-left: 44px; color: #555e6e; font-size: 13px; }
+.min-txt > .mx:first-child { margin-top: 0; }
+.mx-p { color: #3a4252; }
+.mx-gap { height: 6px; }

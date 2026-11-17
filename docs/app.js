@@ -1415,9 +1415,21 @@ function renderMinutes() {
   el.querySelectorAll("[data-min]").forEach(tr => tr.onclick = () => viewMinutes(state.data.minutes.find(r => r.id === Number(tr.dataset.min))));
 }
 // 읽기 화면: 개조식 내용을 보기 좋게. 작성자·관리자에게는 '수정' 버튼
+// 회의록 본문: 개조식 기호(□ ○ - * ※ 등)를 그대로 보이고, 기호 단계마다 들여쓴다(줄이 넘어가도 기호 뒤에 맞춤).
+const MIN_LEVELS = [[/^[□■◆◇▶▷]/, 0], [/^[○◯ㅇ●◦]/, 1], [/^[-–—‐]/, 2], [/^[*·•※⋅]/, 3]];
+function formatMinutes(text) {
+  return String(text || "").split("\n").map(raw => {
+    const ln = raw.trim();
+    if (!ln) return `<div class="mx-gap"></div>`;
+    const hit = MIN_LEVELS.find(([re]) => re.test(ln));
+    if (!hit) return `<div class="mx-p">${esc(ln)}</div>`;
+    const sym = ln[0], rest = ln.slice(1).replace(/^\s+/, "");
+    return `<div class="mx mx-${hit[1]}"><span class="mx-sym">${esc(sym)}</span><span>${esc(rest)}</span></div>`;
+  }).join("");
+}
 function viewMinutes(r) {
   const dlg = $("#formDialog");
-  const sec = (label, text) => text ? `<section class="min-sec"><h4>${label}</h4><div class="txt">${formatTask(text)}</div></section>` : "";
+  const sec = (label, text) => text ? `<section class="min-sec"><h4>${label}</h4><div class="txt min-txt">${formatMinutes(text)}</div></section>` : "";
   const names = splitNames(r.attendees);
   dlg.style.width = "min(760px, 92vw)";
   dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true });
@@ -1451,7 +1463,7 @@ function editMinutes(r) {
       { name: "attendees", label: "참석자(팀원)", type: "checks", options: names },
       { name: "guests", label: "외부 참석자", placeholder: "예: 중기부 홍길동 사무관" },
       { name: "agenda", label: "안건", type: "textarea", rows: 3 },
-      { name: "body", label: "회의 내용", type: "textarea", rows: 8, help: "줄 앞에 - 또는 ○를 쓰면 항목, *는 세부항목으로 보입니다." },
+      { name: "body", label: "회의 내용", type: "textarea", rows: 8, help: "□ ○ - * ※ 같은 기호를 줄 앞에 쓰면 그대로 보이고 단계별로 들여씁니다 (□ > ○ > - > *)." },
       { name: "decisions", label: "결정 사항", type: "textarea", rows: 3 },
       { name: "actions", label: "후속 조치", type: "textarea", rows: 3, placeholder: "- 담당자: 할 일 (기한)" },
       ...(r && (r.files || []).length ? [{ name: "keep", label: "첨부 파일 (체크를 풀면 저장할 때 삭제)", type: "checks",
