@@ -26,6 +26,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const ICON = {
   prev: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
   next: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
+  cal: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
   clip: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>',
 };
 
@@ -450,7 +451,18 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
   fields.flat().filter(f => f.type === "rows").forEach(f => {
     const box = form.querySelector(`[data-rows="${f.name}"]`), body = $("tbody", box);
     $("[data-row-add]", box).onclick = () => { body.insertAdjacentHTML("beforeend", rowsLine(f, {})); body.lastElementChild.querySelector("input,select")?.focus(); };
+    body.addEventListener("change", ev => {
+      if (!ev.target.matches(".pick-hidden") || !ev.target.value) return;
+      ev.target.parentNode.querySelector("[data-col]").value = ev.target.value;
+    });
     body.addEventListener("click", ev => {
+      const pk = ev.target.closest("[data-pick]");
+      if (pk) {
+        const d = pk.nextElementSibling, cur = pk.previousElementSibling.value;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(cur)) d.value = cur;
+        try { d.showPicker(); } catch { d.focus(); d.click(); }
+        return;
+      }
       const x = ev.target.closest("[data-row-del]");
       if (!x) return;
       x.closest("tr").remove();
@@ -463,6 +475,10 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
 function rowsLine(f, r) {
   const cell = c => {
     const v = r[c.key] ?? (c.fill || "");
+    // datetext: 글자로 적거나(예: 차기 회의 전) 달력 버튼으로 날짜를 고른다(YYYY-MM-DD로 들어감)
+    if (c.type === "datetext") return `<div class="datetext"><input data-col="${c.key}" value="${esc(v)}" placeholder="${esc(c.placeholder || "")}"${c.list ? ` list="dl-${f.name}-${c.key}"` : ""}>`
+      + `<button type="button" class="btn-sm" data-pick title="달력에서 날짜 고르기">${ICON.cal}</button><input type="date" class="pick-hidden" tabindex="-1" aria-hidden="true"></div>`
+      + (c.list ? `<datalist id="dl-${f.name}-${c.key}">${c.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>` : "");
     if (c.type === "select") return `<select data-col="${c.key}">${c.options.map(o => `<option ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
     return `<input data-col="${c.key}" type="${c.type || "text"}" value="${esc(v)}" placeholder="${esc(c.placeholder || "")}"${c.list ? ` list="dl-${f.name}-${c.key}"` : ""}>`
       + (c.list ? `<datalist id="dl-${f.name}-${c.key}">${c.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>` : "");
@@ -1462,6 +1478,7 @@ function formatMinutes(text) {
   }).join("");
 }
 const MIN_ACT_STATUS = ["진행", "완료"];
+const isIsoDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
 function actionTable(r) {
   const items = r.action_items || [];
   if (!items.length && !r.actions) return "";
@@ -1469,7 +1486,7 @@ function actionTable(r) {
   return `<section class="min-sec"><h4>후속 조치${items.length ? ` <span class="sub">${items.filter(a => a.status === "완료").length}/${items.length} 완료</span>` : ""}</h4>
     ${items.length ? `<div class="table-wrap"><table class="act-tbl"><thead><tr><th>담당</th><th>할 일</th><th>기한</th><th>상태</th></tr></thead><tbody>
       ${items.map(a => `<tr class="${a.status === "완료" ? "done" : ""}"><td class="nowrap">${a.who ? `${avatar(a.who)} ${esc(a.who)}` : "-"}</td><td>${esc(a.task)}</td>
-        <td class="nowrap small">${a.due ? fmtDate(a.due) : "-"}${a.status !== "완료" && a.due && a.due < today ? " " + pill("imp", "기한초과") : ""}</td>
+        <td class="small">${!a.due ? "-" : isIsoDate(a.due) ? `<span class="nowrap">${fmtDate(a.due)}${a.status !== "완료" && a.due < today ? " " + pill("imp", "기한초과") : ""}</span>` : esc(a.due)}</td>
         <td>${pill(a.status === "완료" ? "s-최종" : "s-진행중", a.status || "진행")}</td></tr>`).join("")}</tbody></table></div>` : ""}
     ${r.actions ? `<div class="txt min-txt">${formatMinutes(r.actions)}</div>` : ""}</section>`;
 }
@@ -1509,10 +1526,10 @@ function editMinutes(r) {
       { name: "agenda", label: "안건", type: "textarea", rows: 3 },
       { name: "body", label: "회의 내용", type: "textarea", rows: 8, help: "□ ○ - * ※ 같은 기호를 줄 앞에 쓰면 그대로 보이고 단계별로 들여씁니다 (□ > ○ > - > *)." },
       { name: "decisions", label: "결정 사항", type: "textarea", rows: 3 },
-      { name: "action_items", label: "후속 조치", type: "rows", help: "담당·할 일·기한을 행마다 적습니다. 다 하면 상태를 ‘완료’로 바꾸세요.",
+      { name: "action_items", label: "후속 조치", type: "rows", help: "담당·할 일·기한을 행마다 적습니다. 기한은 달력 버튼으로 날짜를 고르거나 ‘차기 회의 전’처럼 글로 적습니다. 다 하면 상태를 ‘완료’로 바꾸세요.",
         columns: [{ key: "who", label: "담당", width: "17%", list: names, placeholder: "이름" },
                   { key: "task", label: "할 일", placeholder: "예: 간담회 자료집 인쇄" },
-                  { key: "due", label: "기한", type: "date", width: "22%" },
+                  { key: "due", label: "기한", type: "datetext", width: "24%", placeholder: "날짜 또는 예: 차기 회의 전", list: ["차기 회의 전", "이번 주 내", "다음 주 내", "이번 달 내", "상시"] },
                   { key: "status", label: "상태", type: "select", options: MIN_ACT_STATUS, fill: "진행", width: "14%" }] },
       ...(r?.actions ? [{ name: "actions", label: "후속 조치 (예전에 글로 적은 내용)", type: "textarea", rows: 3,
         help: "표로 옮겨 적은 뒤 이 칸을 비우면 사라집니다." }] : []),

@@ -568,3 +568,7 @@ td.ctr, th.ctr { text-align: center; }
 .rows-tbl input, .rows-tbl select { width: 100%; min-width: 0; padding: 6px 8px; }
 .rows-tbl td:last-child { width: 34px; text-align: center; }
 @media (max-width: 640px) { .rows-tbl { min-width: 560px; } }
+.datetext { display: flex; gap: 4px; align-items: center; position: relative; }
+.datetext input[data-col] { flex: 1; min-width: 0; }
+.datetext [data-pick] { flex: none; padding: 5px 7px; line-height: 0; }
+.datetext .pick-hidden { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
