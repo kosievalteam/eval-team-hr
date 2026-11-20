@@ -390,6 +390,14 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
         return `<label class="chk-pill"><input type="checkbox" name="${f.name}" value="${esc(val)}" ${on.has(val) ? "checked" : ""}>${esc(lbl)}</label>`;
       }).join("")}</div></div>`;
     }
+    // rows: 행을 더하고 지우는 작은 표. 값은 [{열 key: 값}] (모든 칸이 빈 행은 버림)
+    else if (f.type === "rows") {
+      const rows = Array.isArray(v) && v.length ? v : [{}];
+      return `<div class="rows-field" data-rows="${f.name}"><span>${esc(f.label)}</span>
+        <div class="table-wrap"><table class="rows-tbl"><thead><tr>${f.columns.map(c => `<th${c.width ? ` style="width:${c.width}"` : ""}>${esc(c.label)}</th>`).join("")}<th></th></tr></thead>
+        <tbody>${rows.map(r => rowsLine(f, r)).join("")}</tbody></table></div>
+        <button type="button" class="btn-sm" data-row-add>+ 행 추가</button>${f.help ? ` <span class="small muted">${esc(f.help)}</span>` : ""}</div>`;
+    }
     // file: 파일 고르기(여러 개). 값은 File 배열
     else if (f.type === "file") input = `<input name="${f.name}" type="file" multiple>`;
     else if (f.type === "checkbox") return `<label class="chk"><input type="checkbox" name="${f.name}" ${v ? "checked" : ""}> ${esc(f.label)}</label>`;
@@ -427,13 +435,39 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
         v[f.name] = [...form.querySelectorAll(`input[name="${f.name}"]:checked`)].map(x => x.value).join(", ");
         return;
       }
+      if (f.type === "rows") {
+        v[f.name] = [...form.querySelectorAll(`[data-rows="${f.name}"] tbody tr`)]
+          .map(tr => Object.fromEntries(f.columns.map(c => [c.key, (tr.querySelector(`[data-col="${c.key}"]`)?.value || "").trim()])))
+          .filter(r => f.columns.some(c => !c.fill && r[c.key]));
+        return;
+      }
       const el = form.elements[f.name];
       v[f.name] = f.type === "checkbox" ? el.checked : f.type === "file" ? [...el.files] : el.value.trim();
     });
     run(() => onSave(v));
   };
   if (onDelete) $("[data-del]", form).onclick = () => { if (confirm(`${deleteLabel}할까요?`)) run(onDelete); };
+  fields.flat().filter(f => f.type === "rows").forEach(f => {
+    const box = form.querySelector(`[data-rows="${f.name}"]`), body = $("tbody", box);
+    $("[data-row-add]", box).onclick = () => { body.insertAdjacentHTML("beforeend", rowsLine(f, {})); body.lastElementChild.querySelector("input,select")?.focus(); };
+    body.addEventListener("click", ev => {
+      const x = ev.target.closest("[data-row-del]");
+      if (!x) return;
+      x.closest("tr").remove();
+      if (!body.children.length) body.insertAdjacentHTML("beforeend", rowsLine(f, {}));
+    });
+  });
   dlg.showModal();
+}
+// 'rows' 필드의 한 행. 열 type: text(기본)·date·select(options), list는 입력 도우미(datalist) 목록
+function rowsLine(f, r) {
+  const cell = c => {
+    const v = r[c.key] ?? (c.fill || "");
+    if (c.type === "select") return `<select data-col="${c.key}">${c.options.map(o => `<option ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    return `<input data-col="${c.key}" type="${c.type || "text"}" value="${esc(v)}" placeholder="${esc(c.placeholder || "")}"${c.list ? ` list="dl-${f.name}-${c.key}"` : ""}>`
+      + (c.list ? `<datalist id="dl-${f.name}-${c.key}">${c.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>` : "");
+  };
+  return `<tr>${f.columns.map(c => `<td>${cell(c)}</td>`).join("")}<td><button type="button" class="btn-sm danger" data-row-del title="이 행 지우기">×</button></td></tr>`;
 }
 // 관리자는 다른 팀원 이름으로도 입력할 수 있다.
 function whoField(name, label, cur) {
@@ -1427,18 +1461,28 @@ function formatMinutes(text) {
     return `<div class="mx mx-${hit[1]}"><span class="mx-sym">${esc(sym)}</span><span>${esc(rest)}</span></div>`;
   }).join("");
 }
+const MIN_ACT_STATUS = ["진행", "완료"];
+function actionTable(r) {
+  const items = r.action_items || [];
+  if (!items.length && !r.actions) return "";
+  const today = state.data.today;
+  return `<section class="min-sec"><h4>후속 조치${items.length ? ` <span class="sub">${items.filter(a => a.status === "완료").length}/${items.length} 완료</span>` : ""}</h4>
+    ${items.length ? `<div class="table-wrap"><table class="act-tbl"><thead><tr><th>담당</th><th>할 일</th><th>기한</th><th>상태</th></tr></thead><tbody>
+      ${items.map(a => `<tr class="${a.status === "완료" ? "done" : ""}"><td class="nowrap">${a.who ? `${avatar(a.who)} ${esc(a.who)}` : "-"}</td><td>${esc(a.task)}</td>
+        <td class="nowrap small">${a.due ? fmtDate(a.due) : "-"}${a.status !== "완료" && a.due && a.due < today ? " " + pill("imp", "기한초과") : ""}</td>
+        <td>${pill(a.status === "완료" ? "s-최종" : "s-진행중", a.status || "진행")}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    ${r.actions ? `<div class="txt min-txt">${formatMinutes(r.actions)}</div>` : ""}</section>`;
+}
 function viewMinutes(r) {
   const dlg = $("#formDialog");
   const sec = (label, text) => text ? `<section class="min-sec"><h4>${label}</h4><div class="txt min-txt">${formatMinutes(text)}</div></section>` : "";
   const names = splitNames(r.attendees);
-  dlg.style.width = "min(760px, 92vw)";
-  dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true });
   dlg.innerHTML = `<form method="dialog" class="dlg min-view">
     <div class="small muted">${esc(r.meet_date.replaceAll("-", "."))} · ${esc(r.kind)}${r.place ? " · " + esc(r.place) : ""}</div>
     <h3>${esc(r.title)}</h3>
     <div class="min-who">${names.map(n => `<span class="chip">${avatar(n)}${esc(n)}</span>`).join("")}
       ${r.guests ? `<span class="small muted">외부 참석: ${esc(r.guests)}</span>` : ""}</div>
-    ${sec("안건", r.agenda)}${sec("회의 내용", r.body)}${sec("결정 사항", r.decisions)}${sec("후속 조치", r.actions)}
+    ${sec("안건", r.agenda)}${sec("회의 내용", r.body)}${sec("결정 사항", r.decisions)}${actionTable(r)}
     ${(r.files || []).length ? `<section class="min-sec"><h4>첨부 파일</h4><ul class="att-list">${r.files.map(f =>
       `<li><button type="button" class="link att-dl" data-file="${esc(f.key)}">${ICON.clip}${esc(f.name)}</button><span class="small muted">${fileSize(f.size)} · ${esc(f.by || "")}</span></li>`).join("")}</ul></section>` : ""}
     ${safeUrl(r.link) ? `<p><a class="link" href="${esc(r.link)}" target="_blank" rel="noopener noreferrer">관련 자료 열기</a></p>` : ""}
@@ -1465,7 +1509,13 @@ function editMinutes(r) {
       { name: "agenda", label: "안건", type: "textarea", rows: 3 },
       { name: "body", label: "회의 내용", type: "textarea", rows: 8, help: "□ ○ - * ※ 같은 기호를 줄 앞에 쓰면 그대로 보이고 단계별로 들여씁니다 (□ > ○ > - > *)." },
       { name: "decisions", label: "결정 사항", type: "textarea", rows: 3 },
-      { name: "actions", label: "후속 조치", type: "textarea", rows: 3, placeholder: "- 담당자: 할 일 (기한)" },
+      { name: "action_items", label: "후속 조치", type: "rows", help: "담당·할 일·기한을 행마다 적습니다. 다 하면 상태를 ‘완료’로 바꾸세요.",
+        columns: [{ key: "who", label: "담당", width: "17%", list: names, placeholder: "이름" },
+                  { key: "task", label: "할 일", placeholder: "예: 간담회 자료집 인쇄" },
+                  { key: "due", label: "기한", type: "date", width: "22%" },
+                  { key: "status", label: "상태", type: "select", options: MIN_ACT_STATUS, fill: "진행", width: "14%" }] },
+      ...(r?.actions ? [{ name: "actions", label: "후속 조치 (예전에 글로 적은 내용)", type: "textarea", rows: 3,
+        help: "표로 옮겨 적은 뒤 이 칸을 비우면 사라집니다." }] : []),
       ...(r && (r.files || []).length ? [{ name: "keep", label: "첨부 파일 (체크를 풀면 저장할 때 삭제)", type: "checks",
         options: r.files.map(f => [f.key, `${f.name} (${fileSize(f.size)})`]), value: r.files.map(f => f.key).join(", ") }] : []),
       { name: "newfiles", label: "파일 첨부", type: "file", help: "여러 개를 한 번에 고를 수 있습니다. 파일 하나는 20MB까지." },
@@ -1493,6 +1543,7 @@ function editMinutes(r) {
       return must(sb.from("hr_minutes").delete().eq("id", r.id));
     }),
   });
+  $("#formDialog form").classList.add("dlg-wide");  // 후속 조치 표가 들어가므로 보기 화면처럼 넓게
 }
 
 /* ------------------------------------------------------------ 사무용품 신청대장 */

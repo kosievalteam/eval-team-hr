@@ -257,6 +257,7 @@ mark { background: #ffe58a; border-radius: 2px; padding: 0 1px; }
 
 /* dialog */
 dialog { border: 0; border-radius: 14px; padding: 0; width: min(560px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+dialog:has(.min-view), dialog:has(.dlg-wide) { width: min(760px, 92vw); }
 dialog::backdrop { background: rgba(20, 26, 38, .45); }
 .dlg { padding: 22px; display: flex; flex-direction: column; gap: 12px; }
 .dlg h3 { margin: 0 0 4px; }
@@ -555,3 +556,15 @@ td.ctr, th.ctr { text-align: center; }
 .min-txt > .mx:first-child { margin-top: 0; }
 .mx-p { color: #3a4252; }
 .mx-gap { height: 6px; }
+/* 회의록 후속 조치 표(보기)·입력 표 */
+.act-tbl { font-size: 13px; }
+.act-tbl th, .act-tbl td { padding: 7px 10px; vertical-align: middle; }
+.act-tbl tr.done td:nth-child(2) { color: var(--muted); text-decoration: line-through; }
+.min-sec h4 .sub { font-weight: 500; margin-left: 4px; }
+.rows-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.rows-field > button { align-self: flex-start; }
+.rows-tbl th { font-size: 12px; padding: 6px 6px; }
+.rows-tbl td { padding: 4px 4px; }
+.rows-tbl input, .rows-tbl select { width: 100%; min-width: 0; padding: 6px 8px; }
+.rows-tbl td:last-child { width: 34px; text-align: center; }
+@media (max-width: 640px) { .rows-tbl { min-width: 560px; } }
