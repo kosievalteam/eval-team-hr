@@ -451,6 +451,20 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
   fields.flat().filter(f => f.type === "rows").forEach(f => {
     const box = form.querySelector(`[data-rows="${f.name}"]`), body = $("tbody", box);
     $("[data-row-add]", box).onclick = () => { body.insertAdjacentHTML("beforeend", rowsLine(f, {})); body.lastElementChild.querySelector("input,select")?.focus(); };
+    // 표 붙여넣기: 한글·엑셀·웹에서 복사한 표(또는 '조치 사항/담당/기한' 머리글 뒤에 한 칸씩 줄바꿈된 글)를 여러 행으로 채운다
+    body.addEventListener("paste", ev => {
+      const rows = pastedRows(ev.clipboardData, f);
+      if (!rows) return;  // 한 칸짜리 글은 보통 붙여넣기
+      ev.preventDefault();
+      let tr = ev.target.closest("tr");
+      const blank = x => [...x.querySelectorAll("[data-col]")].every(i => i.tagName === "SELECT" || !i.value.trim());
+      rows.forEach((r, i) => {
+        const html = rowsLine(f, r);
+        if (i === 0 && blank(tr)) { tr.insertAdjacentHTML("afterend", html); const n = tr.nextElementSibling; tr.remove(); tr = n; }
+        else { tr.insertAdjacentHTML("afterend", html); tr = tr.nextElementSibling; }
+      });
+      $(".form-msg", form).textContent = `표에서 ${rows.length}행을 넣었습니다. 확인 후 저장하세요.`;
+    });
     body.addEventListener("change", ev => {
       if (!ev.target.matches(".pick-hidden") || !ev.target.value) return;
       ev.target.parentNode.querySelector("[data-col]").value = ev.target.value;
@@ -471,6 +485,44 @@ function openForm({ title, fields, data = {}, onSave, onDelete, deleteLabel = "�
   });
   dlg.showModal();
 }
+// 붙여넣은 표 → [{열 key: 값}]. 머리글(열 label 또는 c.alias)이 있으면 그 순서로, 없으면 표의 열 순서로 맞춘다.
+function pastedRows(cd, f) {
+  const clean = x => String(x || "").replace(/\s+/g, " ").trim();
+  let grid = null;
+  const html = cd.getData("text/html");
+  if (/<table/i.test(html)) {
+    const t = new DOMParser().parseFromString(html, "text/html").querySelector("table");
+    grid = [...t.rows].map(tr => [...tr.cells].map(td => clean(td.textContent)));
+  } else {
+    const lines = cd.getData("text/plain").split(/\r?\n/);
+    if (lines.some(l => l.includes("\t"))) grid = lines.filter(l => l.trim()).map(l => l.split("\t").map(clean));
+    else {
+      // 머리글이 한 줄에 하나씩 오고 값도 한 줄에 하나씩 오는 글(표를 글로 복사한 경우)
+      const ls = lines.map(clean).filter(Boolean);
+      let k = 0;
+      while (k < ls.length && colOf(f, ls[k])) k++;
+      if (k >= 2 && ls.length > k) {
+        grid = [ls.slice(0, k)];
+        for (let i = k; i < ls.length; i += k) grid.push(ls.slice(i, i + k));
+      }
+    }
+  }
+  grid = (grid || []).filter(r => r.some(Boolean));
+  if (!grid.length || (grid.length === 1 && grid[0].length < 2)) return null;
+  const head = grid[0].map(h => colOf(f, h));
+  const hasHead = head.filter(Boolean).length >= 2;
+  const keys = hasHead ? head.map(c => c?.key) : f.columns.map(c => c.key);
+  return (hasHead ? grid.slice(1) : grid).map(cells => {
+    const r = {};
+    cells.forEach((v, i) => { if (keys[i] && v) r[keys[i]] = v; });
+    f.columns.filter(c => c.type === "select" && r[c.key] && !c.options.includes(r[c.key])).forEach(c => delete r[c.key]);
+    return r;
+  }).filter(r => Object.keys(r).length);
+}
+const colOf = (f, h) => {
+  const n = String(h || "").replace(/[\s·:]/g, "");
+  return n && f.columns.find(c => [c.label, ...(c.alias || [])].some(a => a.replace(/[\s·:]/g, "") === n));
+};
 // 'rows' 필드의 한 행. 열 type: text(기본)·date·select(options), list는 입력 도우미(datalist) 목록
 function rowsLine(f, r) {
   const cell = c => {
@@ -1526,11 +1578,11 @@ function editMinutes(r) {
       { name: "agenda", label: "안건", type: "textarea", rows: 3 },
       { name: "body", label: "회의 내용", type: "textarea", rows: 8, help: "□ ○ - * ※ 같은 기호를 줄 앞에 쓰면 그대로 보이고 단계별로 들여씁니다 (□ > ○ > - > *)." },
       { name: "decisions", label: "결정 사항", type: "textarea", rows: 3 },
-      { name: "action_items", label: "후속 조치", type: "rows", help: "담당·할 일·기한을 행마다 적습니다. 기한은 달력 버튼으로 날짜를 고르거나 ‘차기 회의 전’처럼 글로 적습니다. 다 하면 상태를 ‘완료’로 바꾸세요.",
-        columns: [{ key: "who", label: "담당", width: "17%", list: names, placeholder: "이름" },
-                  { key: "task", label: "할 일", placeholder: "예: 간담회 자료집 인쇄" },
-                  { key: "due", label: "기한", type: "datetext", width: "24%", placeholder: "날짜 또는 예: 차기 회의 전", list: ["차기 회의 전", "이번 주 내", "다음 주 내", "이번 달 내", "상시"] },
-                  { key: "status", label: "상태", type: "select", options: MIN_ACT_STATUS, fill: "진행", width: "14%" }] },
+      { name: "action_items", label: "후속 조치", type: "rows", help: "담당·할 일·기한을 행마다 적습니다. 기한은 달력 버튼으로 날짜를 고르거나 ‘차기 회의 전’처럼 글로 적습니다. 한글·엑셀 표를 복사해 아무 칸에 붙여넣으면 여러 행이 한 번에 들어갑니다(머리글 ‘조치 사항·담당·기한’ 인식).",
+        columns: [{ key: "who", label: "담당", width: "17%", list: names, placeholder: "이름", alias: ["담당자", "담당기관", "주관"] },
+                  { key: "task", label: "할 일", placeholder: "예: 간담회 자료집 인쇄", alias: ["조치 사항", "조치사항", "조치", "후속 조치", "내용", "추진 사항"] },
+                  { key: "due", label: "기한", type: "datetext", width: "24%", alias: ["일정", "기간", "완료 기한"], placeholder: "날짜 또는 예: 차기 회의 전", list: ["차기 회의 전", "이번 주 내", "다음 주 내", "이번 달 내", "상시"] },
+                  { key: "status", label: "상태", type: "select", options: MIN_ACT_STATUS, fill: "진행", width: "14%", alias: ["진행 상태", "진행상황"] }] },
       ...(r?.actions ? [{ name: "actions", label: "후속 조치 (예전에 글로 적은 내용)", type: "textarea", rows: 3,
         help: "표로 옮겨 적은 뒤 이 칸을 비우면 사라집니다." }] : []),
       ...(r && (r.files || []).length ? [{ name: "keep", label: "첨부 파일 (체크를 풀면 저장할 때 삭제)", type: "checks",
