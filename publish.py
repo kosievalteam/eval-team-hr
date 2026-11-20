@@ -3,6 +3,7 @@
 - 엑셀 데이터는 저장소에 올리지 않고 Supabase에 올린다. 웹에서는 팀원 계정으로 로그인해야 읽을 수 있다(RLS).
 - 업로드는 hr_put_snapshot RPC가 .secret/hr_upload_token.txt 토큰을 확인한 뒤에만 받아 준다.
 - config.json 팀원 명단(이름·이메일·admin)도 같은 호출로 hr_members에 반영한다.
+- 협의검토(reviews)는 보내도 DB가 무시한다(웹 SIMS 엑셀 반영이 기준, 2026-11-20_snapshot_keep_reviews.sql).
 - 주간업무관리는 웹에서 직접 작성한다(hr_weeks·hr_weekly·hr_tasks). 엑셀은 import_weekly.py로 한 번만 옮긴다.
 - 사용: python publish.py           (업로드 + docs 생성 + 커밋 + 푸시)
         python publish.py --no-push (업로드 + docs 생성만)
