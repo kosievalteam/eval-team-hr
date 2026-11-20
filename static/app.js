@@ -1456,7 +1456,7 @@ function openPcLog(r) {
 // 팀원 누구나 읽기·작성, 수정·삭제는 작성자·관리자. 내용 칸은 주간업무처럼 -·○·* 개조식 표시를 살린다.
 const MIN_KINDS = ["팀 회의", "외부 회의", "간담회", "기타"];
 // 첨부 파일: 비공개 저장소 hr-minutes에 '<회의록 id>/<무작위 id>.<확장자>'로 두고, 원래 이름은 files 칸에 둔다.
-const MIN_BUCKET = "hr-minutes", MIN_FILE_MAX = 20 * 1024 * 1024;
+const MIN_BUCKET = "hr-minutes", MIN_FILE_MAX = 30 * 1024 * 1024;
 const fileSize = n => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 async function uploadMinuteFile(id, file) {
   const key = crypto.randomUUID();
@@ -1587,13 +1587,13 @@ function editMinutes(r) {
         help: "표로 옮겨 적은 뒤 이 칸을 비우면 사라집니다." }] : []),
       ...(r && (r.files || []).length ? [{ name: "keep", label: "첨부 파일 (체크를 풀면 저장할 때 삭제)", type: "checks",
         options: r.files.map(f => [f.key, `${f.name} (${fileSize(f.size)})`]), value: r.files.map(f => f.key).join(", ") }] : []),
-      { name: "newfiles", label: "파일 첨부", type: "file", help: "여러 개를 한 번에 고를 수 있습니다. 파일 하나는 20MB까지." },
+      { name: "newfiles", label: "파일 첨부", type: "file", help: "여러 개를 한 번에 고를 수 있습니다. 파일 하나는 30MB까지." },
     ],
     onSave: async v => {
       if (v.link && !safeUrl(v.link)) throw new Error("관련 자료 링크는 http:// 또는 https://로 시작해야 합니다.");
       const add = v.newfiles || [];
       const big = add.find(f => f.size > MIN_FILE_MAX);
-      if (big) throw new Error(`‘${big.name}’은(는) 20MB를 넘습니다. 원드라이브에 올리고 ‘관련 자료 링크’로 연결하세요.`);
+      if (big) throw new Error(`‘${big.name}’은(는) 30MB를 넘습니다. 원드라이브에 올리고 ‘관련 자료 링크’로 연결하세요.`);
       const keep = new Set(splitNames(v.keep));
       const { keep: _k, newfiles: _n, ...row } = v;
       if (!r) row.author = state.user.name;
