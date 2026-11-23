@@ -1129,6 +1129,96 @@ async function buildKeyHwpx(w) {
   return { blob: await packHwpx(doc), name: `주간핵심업무계획 ${info.label}_평가팀` };
 }
 
+/* 회의록 → 한글(HWPX). 견본 static/templates/minutes.hwpx(tools/make_minutes_template.py)의 {{BODY}} 자리에
+   제목·정보 표·안건·회의 내용·결정 사항·후속 조치 표·첨부를 채운다. 번호는 견본 header.xml에 덧붙인 모양 번호. */
+const HX_MIN = { cTitle: 34, cHead: 35, cBody: 36, cBodyB: 37, cCell: 38, cCellB: 39, cSmall: 40,
+  pCenter: 37, pHead: 38, pLv: [39, 40, 41, 42], pCellL: 43, pCellC: 44, pBase: 45, bLine: 3, bHead: 13 };
+const HX_W = 50800;  // 표 너비(A4 본문 폭 안쪽)
+const xq = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c])
+  .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+const hxP = (pPr, runs) => `<hp:p id="2147483648" paraPrIDRef="${pPr}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${
+  (runs.length ? runs : [[HX_MIN.cBody, ""]]).map(([c, t]) => t === "" ? `<hp:run charPrIDRef="${c}"/>` : `<hp:run charPrIDRef="${c}"><hp:t>${xq(t)}</hp:t></hp:run>`).join("")}</hp:p>`;
+// 표: rows = [[{text, w(열 수), head, center}], ...], widths = 열 너비 배열(합 HX_W)
+function hxTable(widths, rows) {
+  const H = 1700, m = `<hp:cellMargin left="510" right="510" top="200" bottom="200" />`;
+  const trs = rows.map((cells, r) => {
+    let col = 0;
+    return `<hp:tr>${cells.map(c => {
+      const span = c.w || 1, w = widths.slice(col, col + span).reduce((a, b) => a + b, 0);
+      const lines = String(c.text ?? "").split("\n");
+      const tc = `<hp:tc name="" header="${c.head ? 1 : 0}" hasMargin="0" protect="0" editable="0" dirty="0" borderFillIDRef="${c.head ? HX_MIN.bHead : HX_MIN.bLine}">`
+        + `<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">`
+        + lines.map(t => hxP(c.head || c.center ? HX_MIN.pCellC : HX_MIN.pCellL, [[c.head ? HX_MIN.cCellB : HX_MIN.cCell, t]])).join("")
+        + `</hp:subList><hp:cellAddr colAddr="${col}" rowAddr="${r}" /><hp:cellSpan colSpan="${span}" rowSpan="1" />`
+        + `<hp:cellSz width="${w}" height="${H}" />${m}</hp:tc>`;
+      col += span;
+      return tc;
+    }).join("")}</hp:tr>`;
+  }).join("");
+  const tbl = `<hp:tbl id="${1000000000 + Math.floor(Math.random() * 9e8)}" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="1" rowCnt="${rows.length}" colCnt="${widths.length}" cellSpacing="0" borderFillIDRef="${HX_MIN.bLine}" noAdjust="0">`
+    + `<hp:sz width="${HX_W}" widthRelTo="ABSOLUTE" height="${H * rows.length}" heightRelTo="ABSOLUTE" protect="0" />`
+    + `<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0" />`
+    + `<hp:outMargin left="0" right="0" top="0" bottom="0" /><hp:inMargin left="510" right="510" top="141" bottom="141" />${trs}</hp:tbl>`;
+  return `<hp:p id="2147483648" paraPrIDRef="${HX_MIN.pCellL}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="${HX_MIN.cBody}">${tbl}<hp:t/></hp:run></hp:p>`;
+}
+// 개조식 글 → 문단(기호는 그대로, 단계별 내어쓰기). 빈 줄은 건너뛴다.
+function hxMinLines(text) {
+  return String(text || "").split("\n").map(x => x.trim()).filter(Boolean).map(ln => {
+    const hit = MIN_LEVELS.find(([re]) => re.test(ln));
+    if (!hit) return hxP(HX_MIN.pBase, [[HX_MIN.cBody, ln]]);
+    const lv = hit[1], rest = ln.slice(1).replace(/^\s+/, "");
+    return hxP(HX_MIN.pLv[lv], [[lv === 0 ? HX_MIN.cBodyB : HX_MIN.cBody, `${ln[0]} ${rest}`]]);
+  }).join("");
+}
+const dotDate = s => { const d = parseIso(s); return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.(${DOW[d.getDay()]})`; };
+async function buildMinutesHwpx(r) {
+  const doc = await openHwpx("minutes");
+  const { sec } = doc;
+  const head = t => ({ text: t, head: true });
+  const info = [
+    [head("회의일"), { text: dotDate(r.meet_date) }, head("구분"), { text: r.kind }],
+    [head("장소"), { text: r.place || "-", w: 3 }],
+    [head("참석자"), { text: splitNames(r.attendees).join(", ") || "-", w: 3 }],
+    ...(r.guests ? [[head("외부 참석"), { text: r.guests, w: 3 }]] : []),
+    [head("작성자"), { text: r.author || "-" }, head("작성일"), { text: dotDate((r.updated_at || r.meet_date || state.data.today).slice(0, 10)) }],
+  ];
+  const parts = [hxP(HX_MIN.pCenter, [[HX_MIN.cTitle, r.title]]), hxTable([8800, 16600, 8800, 16600], info)];
+  let n = 0;
+  const section = (title, xml) => { if (xml) parts.push(hxP(HX_MIN.pHead, [[HX_MIN.cHead, `${++n}. ${title}`]]), xml); };
+  section("안건", hxMinLines(r.agenda));
+  section("회의 내용", hxMinLines(r.body));
+  section("결정 사항", hxMinLines(r.decisions));
+  const acts = r.action_items || [];
+  section("후속 조치", (acts.length ? hxTable([4200, 25800, 10400, 6800, 3600].map(x => Math.round(x * HX_W / 50800)), [
+      [head("연번"), head("조치 사항"), head("담당"), head("기한"), head("상태")],
+      ...acts.map((a, i) => [{ text: String(i + 1), center: true }, { text: a.task || "" }, { text: a.who || "", center: true },
+        { text: isIsoDate(a.due) ? dotDate(a.due) : a.due || "", center: true }, { text: a.status || "진행", center: true }])]) : "")
+    + hxMinLines(r.actions));
+  section("첨부", (r.files || []).map(f => hxP(HX_MIN.pLv[2], [[HX_MIN.cBody, `- ${f.name}`]])).join("")
+    + (safeUrl(r.link) ? hxP(HX_MIN.pLv[2], [[HX_MIN.cBody, `- 관련 자료: ${r.link}`]]) : ""));
+
+  const t = hxAll(sec, "t").find(x => x.textContent.includes("{{BODY}}"));
+  const anchor = hxUp(t, "p");
+  const frag = new DOMParser().parseFromString(`<x xmlns:hp="${HP_NS}">${parts.join("")}</x>`, "application/xml");
+  if (frag.getElementsByTagName("parsererror").length) throw new Error("회의록 내용을 한글 문서로 바꾸지 못했습니다");
+  [...frag.documentElement.childNodes].forEach(nd => anchor.parentNode.insertBefore(sec.importNode(nd, true), anchor));
+  anchor.remove();
+  const safe = r.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 60);
+  return { blob: await packHwpx(doc), name: `${r.meet_date.replace(/-/g, "").slice(2)}_회의록_${safe}` };
+}
+async function downloadMinutesHwpx(r, btn) {
+  btn.disabled = true;
+  try {
+    const { blob, name } = await buildMinutesHwpx(r);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${name}.hwpx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (err) { alert(`한글 파일을 만들지 못했습니다. (${err.message || err})`); }
+  btn.disabled = false;
+}
+
 async function downloadHwpx(build, w, btn) {
   btn.disabled = true;
   try {
@@ -1557,8 +1647,10 @@ function viewMinutes(r) {
     ${safeUrl(r.link) ? `<p><a class="link" href="${esc(r.link)}" target="_blank" rel="noopener noreferrer">관련 자료 열기</a></p>` : ""}
     <div class="small muted">작성 ${esc(r.author)} · 마지막 수정 ${esc(fmtDT(r.updated_at))}</div>
     <div class="dlg-actions">
-      ${canEdit(r) ? `<button type="button" class="btn-sec" data-medit style="margin-right:auto">수정</button>` : ""}
+      ${canEdit(r) ? `<button type="button" class="btn-sec" data-medit>수정</button>` : ""}
+      <button type="button" class="btn-sec btn-hwp" data-mhwp style="margin-right:auto" title="한글(HWPX) 파일로 내려받기">한글 파일</button>
       <button value="cancel" class="btn-pri">닫기</button></div></form>`;
+  $("[data-mhwp]", dlg).onclick = ev => downloadMinutesHwpx(r, ev.currentTarget);
   const b = $("[data-medit]", dlg);
   if (b) b.onclick = () => { dlg.close(); editMinutes(r); };
   dlg.querySelectorAll("[data-file]").forEach(x => x.onclick = () => downloadMinuteFile(r.files.find(f => f.key === x.dataset.file), x));
