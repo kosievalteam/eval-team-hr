@@ -1,6 +1,6 @@
 """회의록 한글(HWPX) 견본 만들기 → static/templates/minutes.hwpx
 
-주간업무계획 견본(static/templates/weekly_plan.hwpx)의 쪽 설정(A4 세로)·글꼴 목록을 그대로 쓰고,
+주간업무계획 견본(static/templates/weekly_plan.hwpx)의 글꼴 목록을 그대로 쓰고(용지는 A4 세로, 좌우 20mm·위아래 15mm로 바꿈),
 회의록용 글자 모양·문단 모양을 header.xml 끝에 덧붙인다. 본문은 {{BODY}} 문단 하나만 남긴다.
 웹(app.js buildMinutesHwpx)이 이 문단 자리에 제목·정보 표·안건·내용·결정 사항·후속 조치 표를 채운다.
 
@@ -70,6 +70,9 @@ def main():
     sec = zin.read("Contents/section0.xml").decode("utf-8")
     first = sec.index("<hp:p ")
     sec_pr = re.search(r"<hp:secPr .*?</hp:secPr>", sec, re.S).group(0)
+    # 주간업무계획은 가로 문서라서 용지 방향을 세로(WIDELY, A4 210×297)로 바꾸고 여백도 세로 문서에 맞춘다
+    sec_pr = re.sub(r'<hp:pagePr landscape="\w+"', '<hp:pagePr landscape="WIDELY"', sec_pr)
+    sec_pr = re.sub(r'<hp:margin [^>]*/>', '<hp:margin header="2835" footer="2835" gutter="0" left="5669" right="5669" top="4252" bottom="4252" />', sec_pr)
     col_pr = re.search(r"<hp:ctrl><hp:colPr .*?/></hp:ctrl>", sec, re.S).group(0)
     page_num = '<hp:ctrl><hp:pageNum pos="BOTTOM_CENTER" formatType="DIGIT" sideChar="-" /></hp:ctrl>'
     body = (f'<hp:p id="0" paraPrIDRef="45" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">'

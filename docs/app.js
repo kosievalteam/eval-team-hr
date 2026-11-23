@@ -1133,7 +1133,8 @@ async function buildKeyHwpx(w) {
    제목·정보 표·안건·회의 내용·결정 사항·후속 조치 표·첨부를 채운다. 번호는 견본 header.xml에 덧붙인 모양 번호. */
 const HX_MIN = { cTitle: 34, cHead: 35, cBody: 36, cBodyB: 37, cCell: 38, cCellB: 39, cSmall: 40,
   pCenter: 37, pHead: 38, pLv: [39, 40, 41, 42], pCellL: 43, pCellC: 44, pBase: 45, bLine: 3, bHead: 13 };
-const HX_W = 50800;  // 표 너비(A4 본문 폭 안쪽)
+const HX_W = 48000;  // 표 너비(A4 세로 본문 폭 170mm = 48190 안쪽)
+const hxCols = ws => { const t = ws.reduce((a, b) => a + b, 0); const r = ws.map(w => Math.round(w * HX_W / t)); r[r.length - 1] += HX_W - r.reduce((a, b) => a + b, 0); return r; };
 const xq = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c])
   .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
 const hxP = (pPr, runs) => `<hp:p id="2147483648" paraPrIDRef="${pPr}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${
@@ -1182,14 +1183,14 @@ async function buildMinutesHwpx(r) {
     ...(r.guests ? [[head("외부 참석"), { text: r.guests, w: 3 }]] : []),
     [head("작성자"), { text: r.author || "-" }, head("작성일"), { text: dotDate((r.updated_at || r.meet_date || state.data.today).slice(0, 10)) }],
   ];
-  const parts = [hxP(HX_MIN.pCenter, [[HX_MIN.cTitle, r.title]]), hxTable([8800, 16600, 8800, 16600], info)];
+  const parts = [hxP(HX_MIN.pCenter, [[HX_MIN.cTitle, r.title]]), hxTable(hxCols([8800, 16600, 8800, 16600]), info)];
   let n = 0;
   const section = (title, xml) => { if (xml) parts.push(hxP(HX_MIN.pHead, [[HX_MIN.cHead, `${++n}. ${title}`]]), xml); };
   section("안건", hxMinLines(r.agenda));
   section("회의 내용", hxMinLines(r.body));
   section("결정 사항", hxMinLines(r.decisions));
   const acts = r.action_items || [];
-  section("후속 조치", (acts.length ? hxTable([4200, 25800, 10400, 6800, 3600].map(x => Math.round(x * HX_W / 50800)), [
+  section("후속 조치", (acts.length ? hxTable(hxCols([4200, 25000, 10400, 7400, 4000]), [
       [head("연번"), head("조치 사항"), head("담당"), head("기한"), head("상태")],
       ...acts.map((a, i) => [{ text: String(i + 1), center: true }, { text: a.task || "" }, { text: a.who || "", center: true },
         { text: isIsoDate(a.due) ? dotDate(a.due) : a.due || "", center: true }, { text: a.status || "진행", center: true }])]) : "")
