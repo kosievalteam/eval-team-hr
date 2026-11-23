@@ -1649,7 +1649,7 @@ function viewMinutes(r) {
     <div class="small muted">작성 ${esc(r.author)} · 마지막 수정 ${esc(fmtDT(r.updated_at))}</div>
     <div class="dlg-actions">
       ${canEdit(r) ? `<button type="button" class="btn-sec" data-medit>수정</button>` : ""}
-      <button type="button" class="btn-sec btn-hwp" data-mhwp style="margin-right:auto" title="한글(HWPX) 파일로 내려받기">한글 파일</button>
+      <button type="button" class="btn-sec btn-hwp" data-mhwp style="margin-right:auto" title="한글(HWPX) 파일로 내려받기">다운로드</button>
       <button value="cancel" class="btn-pri">닫기</button></div></form>`;
   $("[data-mhwp]", dlg).onclick = ev => downloadMinutesHwpx(r, ev.currentTarget);
   const b = $("[data-medit]", dlg);
