@@ -3,8 +3,11 @@
 //   GET  /onedrive-sync/callback      로그인 결과 받기 → refresh token 저장, 공유 링크 → 폴더 확인, 첫 확인 실행
 //   POST /onedrive-sync/sync          pg_cron이 5분마다 호출(x-cron-key = hr_onedrive.cron_key)
 // 하는 일: 폴더 전체 목록 → ① 새 파일 담당자 Slack DM ② 협의번호별 단계 첫 업로드일 → 협의검토(hr_onedrive_dates)
+//         ③ 복무 엑셀(hr_onedrive.leave_url, leave_enabled) 새 행 → 복무관리 근태(hr_leave), 공휴일 → 스냅샷
+//   GET  /onedrive-sync/leave-peek    복무 엑셀 미리보기·할 일(x-cron-key), ?run=1이면 지금 반영
 // 비밀값(Edge Function Secrets): MS_CLIENT_ID, MS_CLIENT_SECRET, SLACK_BOT_TOKEN
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import * as XLSX from "npm:xlsx@0.18.5";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -130,6 +133,102 @@ async function slackIds(fixed: Record<string, string>, names: string[]) {
   return (name: string) => fixed[name] || ids[name.replace(/\s+/g, "")];
 }
 
+// ---------------------------------------------------------------- 복무(연차입력) 엑셀 읽기
+// 원드라이브 공유 링크(hr_onedrive.leave_url)의 엑셀 → [{row, name, start, end, kind, note}]
+// 열: A 이름 · B 시작일 · C 종료일 · D 구분 · E 비고 (구분이 빈 행은 공휴일). 시트 '연차입력'(없으면 첫 시트)
+const isoOf = (v: unknown): string | null => {
+  if (v instanceof Date && !isNaN(+v)) return new Date(+v + 9 * 3600e3).toISOString().slice(0, 10);
+  if (typeof v === "number" && v > 30000 && v < 80000) return new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 864e5).toISOString().slice(0, 10);
+  const m = typeof v === "string" && v.trim().match(/^(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})\.?$/);
+  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : null;
+};
+async function readLeaveExcel(at: string, url: string) {
+  const it = await graph(at, `/shares/${shareId(url)}/driveItem`);  // 파일이면 내려받기 주소(@microsoft.graph.downloadUrl)가 같이 온다
+  const dl = it["@microsoft.graph.downloadUrl"];
+  const res = dl ? await fetch(dl) : await fetch(`${GRAPH}/shares/${shareId(url)}/driveItem/content`, { headers: { Authorization: "Bearer " + at } });
+  if (!res.ok) throw new Error(`복무 엑셀 내려받기 실패(${res.status})`);
+  const buf = new Uint8Array(await res.arrayBuffer());
+  const wb = XLSX.read(buf, { type: "array", cellDates: true });
+  const sheet = wb.SheetNames.includes("연차입력") ? "연차입력" : wb.SheetNames[0];
+  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, raw: true, defval: null }) as unknown[][];
+  const rows = aoa.slice(1).map((r, i) => {
+    const s = isoOf(r[1]), e = isoOf(r[2]) || s;
+    return { row: i + 2, name: String(r[0] ?? "").trim(), start: s, end: e, kind: String(r[3] ?? "").trim(), note: String(r[4] ?? "").trim() };
+  }).filter(r => r.name && r.start);
+  return { file: it.name, etag: it.eTag, modified: it.lastModifiedDateTime, sheet, sheets: wb.SheetNames, head: aoa[0], rows };
+}
+
+// 근태 구분 → 범주(server.py classify와 같은 규칙)
+function leaveCat(kind: string) {
+  const order = ["연차", "오전반차", "오후반차", "공가", "시간단위", "출장", "외부활동", "기타"];
+  const cats = kind.split(",").map(x => x.trim()).filter(Boolean).map(p =>
+    p.startsWith("연차") ? "연차" : p.includes("오전반차") ? "오전반차" : p.includes("오후반차") ? "오후반차"
+    : /^시간/.test(p) ? "시간단위" : /^(공가|병가|경조)/.test(p) ? "공가" : p.includes("출장") ? "출장"
+    : /대외활동|외근|교육/.test(p) ? "외부활동" : "기타");
+  return order.find(c => cats.includes(c)) || "기타";
+}
+const kindKey = (k: string) => k.replace(/\s+/g, "");
+// 하루·반나절 단위는 범주만 같아도 같은 근태로 본다(예: '연차'와 '연차(9:00~17:00)'). 시간단위·출장·외부활동은 시간까지 같아야 같다.
+const DAY_CATS = ["연차", "오전반차", "오후반차", "공가"];
+// 복무 엑셀 → hr_leave: 새 행은 근태로 넣고, 엑셀에서 새로 넣었던 행이 엑셀에서 바뀌거나 지워지면 정리한다.
+// dry = true면 바꾸지 않고 할 일만 돌려준다.
+async function syncLeave(at: string, st: Record<string, any>, dry = false, force = false) {
+  const x = await readLeaveExcel(at, st.leave_url);
+  if (!dry && !force && x.etag && x.etag === st.leave_etag) return { unchanged: true };
+  const { data: members } = await db.from("hr_members").select("name, email").eq("active", true);
+  const emailOf = new Map((members || []).map((m: { name: string; email: string }) => [m.name, m.email]));
+  const { data: leave } = await db.from("hr_leave").select("id, name, start_date, end_date, kind, updated_at");
+  const { data: done } = await db.from("hr_leave_excel").select("key, leave_id, inserted, created_at");
+  const doneMap = new Map((done || []).map((d: any) => [d.key, d]));
+  const holidays: Record<string, string> = {};
+  const add: any[] = [], link: any[] = [], skipped: string[] = [], keys = new Set<string>();
+  for (const r of x.rows) {
+    if (!r.kind) {  // 공휴일
+      for (let d = r.start!; d <= r.end!; d = new Date(Date.parse(d) + 864e5).toISOString().slice(0, 10)) holidays[d] = r.name;
+      continue;
+    }
+    const key = `${r.name}|${r.start}|${r.end}|${kindKey(r.kind)}`;
+    keys.add(key);
+    if (doneMap.has(key)) continue;
+    if (!emailOf.has(r.name)) { skipped.push(`${r.row}행 ${r.name}(팀원 아님)`); continue; }
+    const same = (leave || []).find((l: any) => l.name === r.name && l.start_date === r.start && l.end_date === r.end
+      && (kindKey(l.kind) === kindKey(r.kind) || (DAY_CATS.includes(leaveCat(r.kind)) && leaveCat(l.kind) === leaveCat(r.kind))));
+    if (same) link.push({ key, leave_id: same.id, inserted: false, row_no: r.row });
+    else add.push({ key, row: r });
+  }
+  // 엑셀에서 새로 넣었던 근태 중 엑셀에서 사라진 행(구분·날짜를 고친 경우 포함): 웹에서 고치지 않았으면 지운다
+  const goneRows = (done || []).filter((d: any) => d.inserted && !keys.has(d.key));
+  const tooFew = x.rows.length < (st.leave_result?.rows || 0) * 0.7;  // 엑셀을 반쯤 읽은 것 같으면 지우지 않음
+  const remove = tooFew ? [] : goneRows.filter((d: any) => {
+    const l = (leave || []).find((v: any) => v.id === d.leave_id);
+    return !l || Date.parse(l.updated_at) <= Date.parse(d.created_at) + 60e3;
+  });
+  const plan = { file: x.file, rows: x.rows.length, holidays: Object.keys(holidays).length,
+    add: add.map(a => `${a.row.row}행 ${a.row.name} ${a.row.start}~${a.row.end} ${a.row.kind}`),
+    link: link.length, remove: remove.map((d: any) => d.key), skipped };
+  if (dry) return { dry: true, ...plan };
+
+  for (const a of add) {
+    const r = a.row;
+    const { data: ins, error } = await db.from("hr_leave").insert({ name: r.name, start_date: r.start, end_date: r.end, kind: r.kind,
+      note: r.note, created_by: emailOf.get(r.name) }).select("id").single();
+    if (error) throw new Error("근태 추가 실패: " + error.message);
+    link.push({ key: a.key, leave_id: ins.id, inserted: true, row_no: r.row });
+  }
+  if (link.length) {
+    const { error } = await db.from("hr_leave_excel").upsert(link, { onConflict: "key" });
+    if (error) throw new Error("엑셀 반영 기록 실패: " + error.message);
+  }
+  for (const d of remove) {
+    if (d.leave_id) await db.from("hr_leave").delete().eq("id", d.leave_id);
+    await db.from("hr_leave_excel").delete().eq("key", d.key);
+  }
+  if (Object.keys(holidays).length) await db.rpc("hr_set_holidays", { p_holidays: holidays });
+  const res = { ...plan, at: new Date().toISOString() };
+  await db.from("hr_onedrive").update({ leave_etag: x.etag, leave_result: res }).eq("id", 1);
+  return res;
+}
+
 // ---------------------------------------------------------------- 확인 1회
 async function sync() {
   const { data: st } = await db.from("hr_onedrive").select("*").eq("id", 1).single();
@@ -198,10 +297,16 @@ async function sync() {
   const { data: changed, error: de } = await db.rpc("hr_onedrive_dates", { p_dates: dates });
   if (de) errors.push("날짜 반영 실패: " + de.message);
 
+  // ③ 복무 엑셀 → 복무관리(근태)
+  let leaveRes: unknown = null;
+  if (st.leave_enabled && st.leave_url) {
+    try { leaveRes = await syncLeave(tk.access_token, st); } catch (e) { errors.push("복무 엑셀: " + (e as Error).message); }
+  }
+
   const result = {
     files: rows.length, new: fresh.length, notified: Object.values(notified).length,
     matched: rows.filter(r => r.case_no).length, unmatched_stage_files: rows.filter(r => r.stage && !r.case_no).length,
-    cases_dated: changed ?? 0, baseline: !st.baseline_done, errors,
+    cases_dated: changed ?? 0, baseline: !st.baseline_done, leave: leaveRes, errors,
   };
   await db.from("hr_onedrive").update({ baseline_done: true, last_run: new Date().toISOString(), last_error: errors.join(" / ") || null, last_result: result }).eq("id", 1);
   return result;
@@ -227,6 +332,16 @@ Deno.serve(async req => {
         await db.from("hr_onedrive").update({ last_run: new Date().toISOString(), last_error: msg }).eq("id", 1);
         return Response.json({ error: msg }, { status: 500 });
       }
+    }
+    if (path.endsWith("/leave-peek")) {  // 복무 엑셀 읽기만(관리용): x-cron-key 필요
+      const { data: st } = await db.from("hr_onedrive").select("*").eq("id", 1).single();
+      if (!st || req.headers.get("x-cron-key") !== st.cron_key) return new Response("forbidden", { status: 403 });
+      const tk = await token({ grant_type: "refresh_token", refresh_token: st.refresh_token });
+      if (tk.refresh_token && tk.refresh_token !== st.refresh_token) await db.from("hr_onedrive").update({ refresh_token: tk.refresh_token }).eq("id", 1);
+      if (url.searchParams.get("run")) return Response.json(await syncLeave(tk.access_token, st, false, true));  // 지금 반영
+      const x = await readLeaveExcel(tk.access_token, st.leave_url);
+      return Response.json({ head: x.head, sheet: x.sheet, sheets: x.sheets, file: x.file, total: x.rows.length,
+        last: x.rows.slice(-25), plan: await syncLeave(tk.access_token, st, true) });
     }
     if (path.endsWith("/login")) {
       const { data: st } = await db.from("hr_onedrive").select("setup_key").eq("id", 1).single();
@@ -258,6 +373,7 @@ Deno.serve(async req => {
     }
     return new Response("not found", { status: 404 });
   } catch (e) {
+    if (path.endsWith("/leave-peek")) return Response.json({ error: (e as Error).message, stack: (e as Error).stack?.slice(0, 600) }, { status: 500 });
     return page(false, "오류가 났습니다", (e as Error).message);
   }
 });
